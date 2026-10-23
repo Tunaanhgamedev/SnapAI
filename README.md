@@ -42,6 +42,10 @@
 
 ```
 SnapAI/
+├── SnapAI.exe             # Native Windows GUI launcher (Auto-starts servers & opens browser)
+├── run.bat                # One-click batch launcher script
+├── stop.bat               # One-click server stop script
+├── launcher.cs            # C# source code for SnapAI.exe
 ├── backend/
 │   ├── server.js          # API Gateway: Extract + Stream Proxy + Super-Resolution
 │   ├── .env.example       # Environment template
@@ -61,7 +65,16 @@ SnapAI/
 
 ---
 
-## 🚀 Getting Started
+## ⚡ Quick Start (Windows)
+
+Double-click either:
+- **`SnapAI.exe`**: Native control panel app. Automatically starts both backend & frontend, tracks service status, and pops up your browser!
+- **`run.bat`**: Console one-click launcher that boots up both servers and opens [http://localhost:5173](http://localhost:5173).
+- **`stop.bat`**: Safely terminates all running background servers on ports 5000 & 5173.
+
+---
+
+## 🚀 Manual Getting Started
 
 ### Prerequisites
 
