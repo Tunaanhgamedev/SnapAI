@@ -1,6 +1,6 @@
 // ============================================================================
-// SnapBunny.ai — Backend Server
-// Bóc tách link đa nền tảng • Stream Proxy • Nâng cấp chất lượng ảnh (AI-Ready)
+// SnapBunny.ai — Backend Server (Optimized)
+// Link extraction • Stream proxy • Image super-resolution (AI-ready)
 // ============================================================================
 require('dotenv').config();
 
@@ -12,84 +12,70 @@ const sharp   = require('sharp');
 const app  = express();
 const PORT = process.env.PORT || 5000;
 
+// ── Constants ────────────────────────────────────────────────────────────────
+const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36';
+const TIKWM = 'https://www.tikwm.com';
+const MAX_UPSCALE_DIM = 8192;
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+const norm = (p) => (!p ? null : p.startsWith('http') ? p : `${TIKWM}${p}`);
+const fmtSize = (b) => {
+  if (!b) return null;
+  const mb = b / 1048576;
+  return mb >= 1 ? `${mb.toFixed(1)} MB` : `${(b / 1024).toFixed(0)} KB`;
+};
+const safeName = (s, max = 120) => s.replace(/[^a-zA-Z0-9_\-]/g, '_').substring(0, max);
+
 // ── Middleware ────────────────────────────────────────────────────────────────
 app.use(cors());
-app.use(express.json({ limit: '2mb' }));
+app.use(express.json({ limit: '1mb' }));
 
-// User-Agent dùng chung cho mọi request tới CDN bên thứ ba
-const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36';
-
-// Helper: chuẩn hoá đường dẫn tương đối về đường dẫn tuyệt đối
-const TIKWM_HOST = 'https://www.tikwm.com';
-const normalizeUrl = (path) => {
-  if (!path) return null;
-  return path.startsWith('http') ? path : `${TIKWM_HOST}${path}`;
-};
-
-// Helper: format kích thước file
-const formatSize = (bytes) => {
-  if (!bytes) return null;
-  const mb = bytes / (1024 * 1024);
-  return mb >= 1 ? `${mb.toFixed(1)} MB` : `${(bytes / 1024).toFixed(0)} KB`;
-};
+// Security headers
+app.use((_, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('Referrer-Policy', 'no-referrer');
+  next();
+});
 
 // ============================================================================
-// 1. API BÓC TÁCH LINK — TikTok / Douyin (Video & Slideshow)
-//    POST /api/extract   { url: string }
+// 1. EXTRACT — TikTok / Douyin link parsing
+//    POST /api/extract  { url: string }
 // ============================================================================
 app.post('/api/extract', async (req, res) => {
   const { url } = req.body;
-
-  if (!url || !url.trim()) {
-    return res.status(400).json({
-      success: false,
-      error: 'Vui lòng nhập đường dẫn TikTok hoặc Douyin hợp lệ!'
-    });
+  if (!url || typeof url !== 'string' || !url.trim()) {
+    return res.status(400).json({ success: false, error: 'Please provide a valid TikTok or Douyin URL.' });
   }
 
   try {
-    // Gọi engine phân tích — hỗ trợ cả link rút gọn (vt.tiktok.com, v.douyin.com)
-    const response = await axios.post(
-      `${TIKWM_HOST}/api/`,
-      new URLSearchParams({
-        url: url.trim(),
-        count: 12,
-        cursor: 0,
-        web: 1,
-        hd: 1
-      }),
+    const { data: resp } = await axios.post(
+      `${TIKWM}/api/`,
+      new URLSearchParams({ url: url.trim(), count: 12, cursor: 0, web: 1, hd: 1 }),
       {
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
-          'User-Agent': UA
-        },
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8', 'User-Agent': UA },
         timeout: 15000
       }
     );
 
-    const resData = response.data;
-
-    if (resData.code !== 0 || !resData.data) {
-      return res.status(404).json({
-        success: false,
-        error: 'Không thể lấy dữ liệu. Link không hợp lệ hoặc bài đăng ở chế độ riêng tư.'
-      });
+    if (resp.code !== 0 || !resp.data) {
+      return res.status(404).json({ success: false, error: 'Content not found or is set to private.' });
     }
 
-    const d = resData.data;
-    const isSlideshow = Array.isArray(d.images) && d.images.length > 0;
+    const d = resp.data;
+    const isSlide = Array.isArray(d.images) && d.images.length > 0;
 
-    const result = {
+    return res.json({
       success: true,
       id: d.id,
-      title: d.title || 'Không có tiêu đề',
-      cover: normalizeUrl(d.cover) || normalizeUrl(d.origin_cover),
+      title: d.title || 'Untitled',
+      cover: norm(d.cover) || norm(d.origin_cover),
       duration: d.duration || 0,
       createTime: d.create_time,
       author: {
         nickname: d.author?.nickname || 'Unknown',
         uniqueId: d.author?.unique_id || '',
-        avatar: normalizeUrl(d.author?.avatar)
+        avatar: norm(d.author?.avatar)
       },
       stats: {
         plays: d.play_count,
@@ -97,247 +83,159 @@ app.post('/api/extract', async (req, res) => {
         comments: d.comment_count,
         shares: d.share_count
       },
-      type: isSlideshow ? 'slideshow' : 'video',
+      type: isSlide ? 'slideshow' : 'video',
       downloads: {
-        noWatermarkSD: normalizeUrl(d.play),
-        noWatermarkHD: normalizeUrl(d.hdplay || d.play),
-        watermark: normalizeUrl(d.wmplay),
-        music: normalizeUrl(d.music),
+        noWatermarkSD: norm(d.play),
+        noWatermarkHD: norm(d.hdplay || d.play),
+        watermark: norm(d.wmplay),
+        music: norm(d.music),
         musicTitle: d.music_info?.title || null
       },
       sizeInfo: {
-        sdSize: formatSize(d.size) || 'SD',
-        hdSize: formatSize(d.hd_size) || 'HD',
-        wmSize: formatSize(d.wm_size) || 'Gốc'
+        sdSize: fmtSize(d.size) || 'SD',
+        hdSize: fmtSize(d.hd_size) || 'HD',
+        wmSize: fmtSize(d.wm_size) || 'Original'
       },
-      images: isSlideshow ? d.images.map(normalizeUrl) : []
-    };
-
-    return res.json(result);
-  } catch (error) {
-    console.error('[Extract Error]', error.message);
-    const status = error.response?.status || 500;
-    return res.status(status).json({
+      images: isSlide ? d.images.map(norm) : []
+    });
+  } catch (err) {
+    console.error('[Extract]', err.message);
+    return res.status(err.response?.status || 500).json({
       success: false,
-      error: 'Lỗi kết nối tới máy chủ phân tích. Vui lòng thử lại sau ít phút.'
+      error: 'Failed to connect to analysis engine. Please try again later.'
     });
   }
 });
 
 // ============================================================================
-// 2. STREAM PROXY — Tải file trực tiếp & vượt CORS / 403 Forbidden
+// 2. STREAM PROXY — direct CDN-to-browser pipe (bypasses CORS / 403)
 //    GET /api/download?fileUrl=...&filename=...&ext=mp4
 // ============================================================================
 app.get('/api/download', async (req, res) => {
-  const { fileUrl, filename = 'snapbunny_media', ext = 'mp4' } = req.query;
-
-  if (!fileUrl) {
-    return res.status(400).json({ error: 'Thiếu tham số fileUrl' });
-  }
+  const { fileUrl, filename = 'snap_media', ext = 'mp4' } = req.query;
+  if (!fileUrl) return res.status(400).json({ error: 'Missing fileUrl parameter.' });
 
   try {
-    // Xác định Referer phù hợp theo nguồn CDN
-    let referer = 'https://www.tiktok.com/';
-    if (fileUrl.includes('douyin')) referer = 'https://www.douyin.com/';
+    const referer = fileUrl.includes('douyin') ? 'https://www.douyin.com/' : 'https://www.tiktok.com/';
 
     const upstream = await axios({
       method: 'GET',
       url: fileUrl,
       responseType: 'stream',
-      timeout: 30000,
-      headers: {
-        'User-Agent': UA,
-        'Referer': referer,
-        'Accept': '*/*'
-      }
+      timeout: 60000,
+      headers: { 'User-Agent': UA, 'Referer': referer, 'Accept': '*/*' }
     });
 
-    // Tên file an toàn — loại bỏ ký tự đặc biệt
-    const safeName = filename.replace(/[^a-zA-Z0-9_\-]/g, '_').substring(0, 120);
-
-    res.setHeader('Content-Disposition', `attachment; filename="${safeName}.${ext}"`);
+    res.setHeader('Content-Disposition', `attachment; filename="${safeName(filename)}.${ext}"`);
     res.setHeader('Content-Type', upstream.headers['content-type'] || 'application/octet-stream');
-
     if (upstream.headers['content-length']) {
       res.setHeader('Content-Length', upstream.headers['content-length']);
     }
 
-    // Pipe stream trực tiếp: CDN → Server → Trình duyệt (không lưu file tạm)
     upstream.data.pipe(res);
-
-    // Dọn dẹp nếu client ngắt kết nối giữa chừng
-    req.on('close', () => {
-      upstream.data.destroy();
-    });
-  } catch (error) {
-    console.error('[Download Proxy Error]', error.message);
+    req.on('close', () => upstream.data.destroy());
+  } catch (err) {
+    console.error('[Download]', err.message);
     if (!res.headersSent) {
-      res.status(502).json({ error: 'Không thể tải file từ nguồn. Vui lòng thử lại.' });
+      res.status(502).json({ error: 'Unable to fetch file from upstream CDN.' });
     }
   }
 });
 
 // ============================================================================
-// 3. NÂNG CẤP CHẤT LƯỢNG ẢNH — Lanczos3 + Unsharp Masking (CPU, miễn phí)
+// 3. IMAGE UPSCALE — Lanczos3 + median denoise + unsharp masking (CPU)
 //    GET /api/upscale-image?imageUrl=...&scale=2&filename=upscaled
 // ============================================================================
 app.get('/api/upscale-image', async (req, res) => {
-  const {
-    imageUrl,
-    scale = '2',
-    filename = 'snapbunny_upscaled'
-  } = req.query;
-
-  if (!imageUrl) {
-    return res.status(400).json({ error: 'Thiếu tham số imageUrl' });
-  }
+  const { imageUrl, scale = '2', filename = 'snap_upscaled' } = req.query;
+  if (!imageUrl) return res.status(400).json({ error: 'Missing imageUrl parameter.' });
 
   try {
-    // 1. Tải buffer ảnh gốc về RAM
-    const imgResponse = await axios.get(imageUrl, {
+    const { data } = await axios.get(imageUrl, {
       responseType: 'arraybuffer',
       timeout: 20000,
       headers: { 'User-Agent': UA }
     });
 
-    const inputBuffer = Buffer.from(imgResponse.data);
-    const metadata    = await sharp(inputBuffer).metadata();
-    const srcWidth    = metadata.width || 1080;
-    const srcHeight   = metadata.height || 1920;
+    const buf  = Buffer.from(data);
+    const meta = await sharp(buf).metadata();
+    const w    = meta.width || 1080;
+    const h    = meta.height || 1920;
+    const mult = parseInt(scale, 10) === 4 ? 4 : 2;
+    const tw   = Math.min(w * mult, MAX_UPSCALE_DIM);
 
-    // 2. Xác định hệ số phóng đại
-    const multiplier  = parseInt(scale, 10) === 4 ? 4 : 2;
-    const targetWidth = srcWidth * multiplier;
-
-    // Giới hạn an toàn: không vượt 8192px để tránh tràn RAM
-    const maxDim      = 8192;
-    const finalWidth  = Math.min(targetWidth, maxDim);
-
-    // 3. Pipeline xử lý ảnh:
-    //    Lanczos3 (nội suy cấp cao) → Denoise nhẹ → Unsharp Masking (tăng nét viền)
-    const upscaledBuffer = await sharp(inputBuffer)
-      .resize({
-        width: finalWidth,
-        kernel: sharp.kernel.lanczos3,
-        withoutEnlargement: false
-      })
-      // Khử nhiễu nhẹ trước khi làm nét (giảm artifact do nén JPEG)
-      .median(multiplier === 4 ? 3 : 1)
-      .sharpen({
-        sigma: multiplier === 4 ? 1.5 : 1.2,   // Bán kính gaussian
-        m1: 1.0,                                 // Flat areas sharpening
-        m2: 2.0                                  // Jagged areas sharpening
-      })
-      .jpeg({
-        quality: 98,
-        chromaSubsampling: '4:4:4',              // Giữ nguyên thông tin màu
-        mozjpeg: true                            // Tối ưu kích thước bằng MozJPEG encoder
-      })
+    const out = await sharp(buf)
+      .resize({ width: tw, kernel: sharp.kernel.lanczos3, withoutEnlargement: false })
+      .median(mult === 4 ? 3 : 1)
+      .sharpen({ sigma: mult === 4 ? 1.5 : 1.2, m1: 1.0, m2: 2.0 })
+      .jpeg({ quality: 98, chromaSubsampling: '4:4:4', mozjpeg: true })
       .toBuffer();
 
-    const safeName = filename.replace(/[^a-zA-Z0-9_\-]/g, '_').substring(0, 100);
-
-    res.setHeader('Content-Disposition', `attachment; filename="${safeName}_${multiplier}x_HD.jpg"`);
+    res.setHeader('Content-Disposition', `attachment; filename="${safeName(filename)}_${mult}x_HD.jpg"`);
     res.setHeader('Content-Type', 'image/jpeg');
-    res.setHeader('Content-Length', upscaledBuffer.length);
-    res.setHeader('X-Original-Size', `${srcWidth}x${srcHeight}`);
-    res.setHeader('X-Upscaled-Size', `${finalWidth}x${Math.round(srcHeight * (finalWidth / srcWidth))}`);
-
-    return res.send(upscaledBuffer);
-  } catch (error) {
-    console.error('[Upscale Error]', error.message);
+    res.setHeader('Content-Length', out.length);
+    res.setHeader('X-Original-Size', `${w}x${h}`);
+    res.setHeader('X-Upscaled-Size', `${tw}x${Math.round(h * (tw / w))}`);
+    return res.send(out);
+  } catch (err) {
+    console.error('[Upscale]', err.message);
     if (!res.headersSent) {
-      return res.status(500).json({
-        error: 'Lỗi khi nâng cấp chất lượng hình ảnh. File có thể quá lớn hoặc không phải ảnh hợp lệ.'
-      });
+      return res.status(500).json({ error: 'Image upscale failed. File may be too large or invalid.' });
     }
   }
 });
 
 // ============================================================================
-// 4. (PLACEHOLDER) AI UPSCALE VỚI REPLICATE — Real-ESRGAN + GFPGAN
-//    POST /api/upscale-ai   { imageUrl, scale, faceEnhance }
-//    → Kích hoạt khi có REPLICATE_API_TOKEN trong .env
+// 4. AI UPSCALE (Real-ESRGAN) — requires REPLICATE_API_TOKEN
+//    POST /api/upscale-ai  { imageUrl, scale, faceEnhance }
 // ============================================================================
 app.post('/api/upscale-ai', async (req, res) => {
   const token = process.env.REPLICATE_API_TOKEN;
-
   if (!token) {
-    return res.status(501).json({
-      error: 'Tính năng AI Upscale chưa được kích hoạt. Vui lòng thêm REPLICATE_API_TOKEN vào file .env'
-    });
+    return res.status(501).json({ error: 'AI Upscale not activated. Add REPLICATE_API_TOKEN to .env' });
   }
 
   const { imageUrl, scale = 2, faceEnhance = true } = req.body;
-
-  if (!imageUrl) {
-    return res.status(400).json({ error: 'Thiếu tham số imageUrl' });
-  }
+  if (!imageUrl) return res.status(400).json({ error: 'Missing imageUrl parameter.' });
 
   try {
-    // Gọi Replicate API — model Real-ESRGAN
-    const prediction = await axios.post(
+    const { data: pred } = await axios.post(
       'https://api.replicate.com/v1/predictions',
       {
         version: 'f121d640bd286e1fdc67f9799164c1d5be36ff74576ee11c803ae5b665dd46aa',
-        input: {
-          image: imageUrl,
-          scale: Math.min(scale, 4),
-          face_enhance: faceEnhance
-        }
+        input: { image: imageUrl, scale: Math.min(scale, 4), face_enhance: faceEnhance }
       },
-      {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-        timeout: 10000
-      }
+      { headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, timeout: 10000 }
     );
 
-    // Replicate trả về prediction ID — cần polling để lấy kết quả
-    // Trong production nên dùng webhook thay vì polling
-    const predictionId = prediction.data.id;
-    let result = prediction.data;
-    let attempts = 0;
-    const maxAttempts = 60; // Tối đa 60 giây
-
-    while (result.status !== 'succeeded' && result.status !== 'failed' && attempts < maxAttempts) {
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      const poll = await axios.get(
-        `https://api.replicate.com/v1/predictions/${predictionId}`,
-        { headers: { 'Authorization': `Bearer ${token}` } }
+    let result = pred;
+    for (let i = 0; i < 60 && result.status !== 'succeeded' && result.status !== 'failed'; i++) {
+      await new Promise(r => setTimeout(r, 1000));
+      const { data } = await axios.get(
+        `https://api.replicate.com/v1/predictions/${pred.id}`,
+        { headers: { Authorization: `Bearer ${token}` } }
       );
-      result = poll.data;
-      attempts++;
+      result = data;
     }
 
     if (result.status === 'succeeded') {
-      return res.json({
-        success: true,
-        upscaledUrl: result.output,
-        metrics: result.metrics
-      });
-    } else {
-      return res.status(500).json({
-        error: 'AI Upscale thất bại hoặc hết thời gian chờ.',
-        status: result.status
-      });
+      return res.json({ success: true, upscaledUrl: result.output, metrics: result.metrics });
     }
-  } catch (error) {
-    console.error('[AI Upscale Error]', error.message);
-    return res.status(500).json({ error: 'Lỗi khi gọi dịch vụ AI Upscale.' });
+    return res.status(500).json({ error: 'AI Upscale timed out or failed.', status: result.status });
+  } catch (err) {
+    console.error('[AI Upscale]', err.message);
+    return res.status(500).json({ error: 'AI Upscale service error.' });
   }
 });
 
 // ============================================================================
 // 5. HEALTH CHECK
 // ============================================================================
-app.get('/api/health', (req, res) => {
+app.get('/api/health', (_, res) => {
   res.json({
     status: 'ok',
-    service: 'SnapBunny.ai Backend',
-    version: '1.0.0',
+    service: 'SnapBunny.ai',
+    version: '1.1.0',
     features: {
       extract: true,
       streamProxy: true,
@@ -348,17 +246,17 @@ app.get('/api/health', (req, res) => {
   });
 });
 
-// ── Khởi động server ─────────────────────────────────────────────────────────
+// ── Start ────────────────────────────────────────────────────────────────────
 app.listen(PORT, () => {
   console.log('');
   console.log('  ╔══════════════════════════════════════════════════════╗');
-  console.log(`  ║  🚀 SnapBunny.ai Backend đang chạy tại cổng ${PORT}     ║`);
+  console.log(`  ║  🚀 SnapBunny.ai Backend — port ${PORT}                ║`);
   console.log('  ║                                                      ║');
-  console.log(`  ║  → http://localhost:${PORT}/api/health                  ║`);
-  console.log('  ║  → Bóc tách:  POST /api/extract                     ║');
-  console.log('  ║  → Tải file:  GET  /api/download                    ║');
-  console.log('  ║  → Làm nét:   GET  /api/upscale-image               ║');
-  console.log('  ║  → AI (GPU):  POST /api/upscale-ai                  ║');
+  console.log(`  ║  Health:    http://localhost:${PORT}/api/health          ║`);
+  console.log('  ║  Extract:   POST /api/extract                        ║');
+  console.log('  ║  Download:  GET  /api/download                       ║');
+  console.log('  ║  Upscale:   GET  /api/upscale-image                  ║');
+  console.log('  ║  AI (GPU):  POST /api/upscale-ai                     ║');
   console.log('  ╚══════════════════════════════════════════════════════╝');
   console.log('');
 });
