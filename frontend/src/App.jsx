@@ -1,414 +1,433 @@
-import React, { useState, useCallback } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import axios from 'axios';
 import {
-  Download,
-  Sparkles,
-  Music,
-  Video,
-  Image as ImageIcon,
-  Clipboard,
-  Trash2,
-  Loader2,
-  CheckCircle2,
-  ShieldCheck,
-  Zap,
-  Layers,
-  ExternalLink,
-  Heart,
-  MessageCircle,
-  Share2,
-  Play,
-  ArrowUpRight,
-  AlertCircle,
-  Clock,
-  Eye
+  Download, Sparkles, Music, Video, Image as ImageIcon,
+  Clipboard, Trash2, Loader2, CheckCircle2, ShieldCheck,
+  Zap, Layers, AlertCircle, Clock, Eye, Heart,
+  MessageCircle, Share2, ChevronDown, Menu, X
 } from 'lucide-react';
 
 const API = 'http://localhost:5000';
 
-// ── Số liệu hiển thị dạng ngắn: 1.2K, 3.4M ─────────────────────────────────
-function formatCount(n) {
-  if (!n && n !== 0) return '—';
-  if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M';
-  if (n >= 1_000) return (n / 1_000).toFixed(1) + 'K';
-  return n.toString();
+// ── Helpers ──────────────────────────────────────────────────────────────────
+const fmtCount = (n) => {
+  if (n == null) return null;
+  if (n >= 1e6) return (n / 1e6).toFixed(1) + 'M';
+  if (n >= 1e3) return (n / 1e3).toFixed(1) + 'K';
+  return String(n);
+};
+
+const fmtDuration = (s) => {
+  if (!s) return null;
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+};
+
+// ══════════════════════════════════════════════════════════════════════════════
+// REUSABLE COMPONENTS
+// ══════════════════════════════════════════════════════════════════════════════
+
+/** Download button — touch-friendly, responsive sizing */
+function DlButton({ href, icon: Icon, label, badge, variant = 'default', className = '' }) {
+  const base = 'flex items-center justify-between gap-2 px-3 sm:px-4 py-3 sm:py-3.5 rounded-xl font-medium text-sm transition-all active:scale-[0.97] touch-target';
+  const variants = {
+    primary: 'bg-indigo-600 hover:bg-indigo-500 text-white',
+    success: 'bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white shadow-lg shadow-emerald-950/30',
+    default: 'bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700/60',
+  };
+  return (
+    <a href={href} className={`${base} ${variants[variant]} ${className}`}>
+      <span className="flex items-center gap-2 min-w-0">
+        <Icon className="w-4 h-4 shrink-0" />
+        <span className="truncate">{label}</span>
+      </span>
+      {badge && (
+        <span className="text-xs px-2 py-0.5 rounded-lg bg-black/20 shrink-0 whitespace-nowrap">
+          {badge}
+        </span>
+      )}
+    </a>
+  );
 }
 
-// ── Thời lượng: 75 → "1:15" ──────────────────────────────────────────────────
-function formatDuration(seconds) {
-  if (!seconds) return null;
-  const m = Math.floor(seconds / 60);
-  const s = seconds % 60;
-  return `${m}:${s.toString().padStart(2, '0')}`;
+/** Stat pill */
+function Stat({ icon: Icon, value, color }) {
+  const v = fmtCount(value);
+  if (!v) return null;
+  return (
+    <span className="flex items-center gap-1 sm:gap-1.5">
+      <Icon className={`w-3.5 h-3.5 ${color || ''}`} />
+      <span>{v}</span>
+    </span>
+  );
+}
+
+/** Image card with download + upscale buttons */
+function ImageCard({ imgUrl, idx, proxyUrl, upscaleUrl, factor }) {
+  return (
+    <div className="bg-slate-950 border border-slate-800 rounded-xl overflow-hidden flex flex-col group hover:border-slate-700 transition">
+      <div className="aspect-[3/4] overflow-hidden bg-slate-900 relative">
+        <img
+          src={imgUrl}
+          alt={`Slide ${idx + 1}`}
+          className="w-full h-full object-cover group-hover:scale-105 transition duration-500"
+          loading="lazy"
+          decoding="async"
+        />
+        <span className="absolute top-1.5 right-1.5 sm:top-2 sm:right-2 px-1.5 sm:px-2 py-0.5 rounded-md bg-black/70 backdrop-blur-sm text-[10px] sm:text-[11px] font-bold text-white/80">
+          #{idx + 1}
+        </span>
+      </div>
+      <div className="p-2 sm:p-2.5 flex flex-col gap-1.5 sm:gap-2">
+        <a
+          href={proxyUrl}
+          className="w-full py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-[11px] sm:text-xs font-medium text-center flex items-center justify-center gap-1.5 transition active:scale-[0.97] touch-target"
+        >
+          <Download className="w-3 sm:w-3.5 h-3 sm:h-3.5" /> Ảnh gốc
+        </a>
+        <a
+          href={upscaleUrl}
+          className="w-full py-2 rounded-lg bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-[11px] sm:text-xs font-bold text-white text-center flex items-center justify-center gap-1.5 transition shadow-md shadow-indigo-600/20 active:scale-[0.97] touch-target"
+        >
+          <Sparkles className="w-3 sm:w-3.5 h-3 sm:h-3.5" /> Làm nét {factor}x
+        </a>
+      </div>
+    </div>
+  );
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// COMPONENT CHÍNH
+// MAIN APP
 // ══════════════════════════════════════════════════════════════════════════════
 export default function App() {
-  const [url, setUrl] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
-  const [mediaData, setMediaData] = useState(null);
+  const [url, setUrl]                 = useState('');
+  const [loading, setLoading]         = useState(false);
+  const [error, setError]             = useState('');
+  const [mediaData, setMediaData]     = useState(null);
   const [upscaleFactor, setUpscaleFactor] = useState('2');
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
-  // ── Clipboard: Dán nhanh ───────────────────────────────────────────────────
+  // ── Clipboard paste ────────────────────────────────────────────────────────
   const handlePaste = useCallback(async () => {
     try {
       const text = await navigator.clipboard.readText();
-      if (text) {
-        setUrl(text.trim());
-        setError('');
-      }
+      if (text) { setUrl(text.trim()); setError(''); }
     } catch {
-      setError('Trình duyệt chưa cấp quyền đọc clipboard. Hãy dùng Ctrl+V.');
+      setError('Trình duyệt chưa cấp quyền đọc clipboard. Hãy dùng Ctrl+V / ⌘V.');
     }
   }, []);
 
-  // ── Clear toàn bộ ──────────────────────────────────────────────────────────
   const handleClear = useCallback(() => {
-    setUrl('');
-    setMediaData(null);
-    setError('');
+    setUrl(''); setMediaData(null); setError('');
   }, []);
 
-  // ── Gửi link lên Backend phân tích ─────────────────────────────────────────
+  // ── Extract API ────────────────────────────────────────────────────────────
   const handleExtract = useCallback(async (e) => {
     e.preventDefault();
     const trimmed = url.trim();
-
     if (!trimmed) {
       setError('Vui lòng dán đường dẫn TikTok hoặc Douyin vào ô phía trên!');
       return;
     }
-
-    setLoading(true);
-    setError('');
-    setMediaData(null);
-
+    setLoading(true); setError(''); setMediaData(null);
     try {
       const res = await axios.post(`${API}/api/extract`, { url: trimmed });
-      if (res.data?.success) {
-        setMediaData(res.data);
-      } else {
-        setError(res.data?.error || 'Không thể phân tích đường dẫn.');
-      }
+      if (res.data?.success) setMediaData(res.data);
+      else setError(res.data?.error || 'Không thể phân tích đường dẫn.');
     } catch (err) {
-      setError(
-        err.response?.data?.error ||
-        'Không thể kết nối tới máy chủ. Hãy đảm bảo Backend đang chạy ở cổng 5000.'
-      );
+      setError(err.response?.data?.error || 'Không thể kết nối tới máy chủ (cổng 5000).');
     } finally {
       setLoading(false);
     }
   }, [url]);
 
-  // ── Tạo URL Stream Proxy (tải về máy) ─────────────────────────────────────
-  const proxyUrl = useCallback((fileUrl, suffix, ext = 'mp4') => {
+  // ── URL builders (memoized) ────────────────────────────────────────────────
+  const proxy = useCallback((fileUrl, suffix, ext = 'mp4') => {
     if (!fileUrl) return '#';
-    const name = `snapbunny_${mediaData?.id || Date.now()}_${suffix}`;
-    return `${API}/api/download?fileUrl=${encodeURIComponent(fileUrl)}&filename=${name}&ext=${ext}`;
+    return `${API}/api/download?fileUrl=${encodeURIComponent(fileUrl)}&filename=snap_${mediaData?.id || Date.now()}_${suffix}&ext=${ext}`;
   }, [mediaData]);
 
-  // ── Tạo URL Upscale ảnh (2x / 4x) ─────────────────────────────────────────
-  const upscaleUrl = useCallback((imageUrl, index) => {
-    const name = `snapbunny_photo_${mediaData?.id || Date.now()}_${index + 1}`;
-    return `${API}/api/upscale-image?imageUrl=${encodeURIComponent(imageUrl)}&scale=${upscaleFactor}&filename=${name}`;
+  const upscale = useCallback((imageUrl, idx) => {
+    return `${API}/api/upscale-image?imageUrl=${encodeURIComponent(imageUrl)}&scale=${upscaleFactor}&filename=snap_photo_${mediaData?.id || Date.now()}_${idx + 1}`;
   }, [mediaData, upscaleFactor]);
+
+  // ── Feature cards data ─────────────────────────────────────────────────────
+  const features = useMemo(() => [
+    {
+      icon: <CheckCircle2 className="w-5 sm:w-6 h-5 sm:h-6 text-indigo-400" />,
+      title: 'Tùy chọn Watermark',
+      desc: 'Lấy luồng phát gốc sạch 100% hoặc giữ lại logo nguyên bản tùy nhu cầu.',
+      grad: 'from-indigo-500/10'
+    },
+    {
+      icon: <Sparkles className="w-5 sm:w-6 h-5 sm:h-6 text-purple-400" />,
+      title: 'Nâng cấp 2K / 4K',
+      desc: 'Bộ lọc Lanczos3 kết hợp Unsharp Masking tăng độ chi tiết cho ảnh bị nén mờ.',
+      grad: 'from-purple-500/10'
+    },
+    {
+      icon: <ShieldCheck className="w-5 sm:w-6 h-5 sm:h-6 text-emerald-400" />,
+      title: 'Stream Proxy',
+      desc: 'Truyền tải trực tiếp từ CDN về trình duyệt qua luồng — không lưu file tạm.',
+      grad: 'from-emerald-500/10'
+    }
+  ], []);
 
   // ══════════════════════════════════════════════════════════════════════════════
   // RENDER
   // ══════════════════════════════════════════════════════════════════════════════
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 font-sans selection:bg-indigo-500/40 selection:text-white">
+    <div className="min-h-screen min-h-dvh bg-slate-950 text-slate-100 font-sans selection:bg-indigo-500/40 selection:text-white">
 
-      {/* ── HEADER ────────────────────────────────────────────────────────── */}
-      <header className="border-b border-slate-800/80 bg-slate-900/60 backdrop-blur-xl sticky top-0 z-50">
-        <div className="max-w-5xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-lg shadow-indigo-500/25 animate-pulse-ring">
-              <Zap className="w-5 h-5 text-white" />
+      {/* ═══ HEADER ═══════════════════════════════════════════════════════════ */}
+      <header className="border-b border-slate-800/80 bg-slate-900/60 backdrop-blur-xl sticky top-0 z-50 safe-top">
+        <div className="max-w-5xl mx-auto px-3 sm:px-6 h-14 sm:h-16 flex items-center justify-between safe-x">
+          {/* Logo */}
+          <div className="flex items-center gap-2 sm:gap-2.5">
+            <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-lg shadow-indigo-500/25 animate-pulse-ring">
+              <Zap className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
             </div>
-            <span className="font-bold text-xl tracking-tight">
+            <span className="font-bold text-lg sm:text-xl tracking-tight">
               <span className="bg-gradient-to-r from-white to-slate-300 bg-clip-text text-transparent">Snap</span>
               <span className="bg-gradient-to-r from-indigo-400 to-purple-400 bg-clip-text text-transparent">Bunny</span>
-              <span className="text-indigo-400 text-sm font-semibold">.ai</span>
+              <span className="text-indigo-400 text-xs sm:text-sm font-semibold">.ai</span>
             </span>
           </div>
 
-          <div className="hidden sm:flex items-center gap-3 text-xs font-medium text-slate-400">
-            <span className="px-3 py-1.5 rounded-full bg-slate-800/80 border border-slate-700/60">
-              TikTok
-            </span>
-            <span className="px-3 py-1.5 rounded-full bg-slate-800/80 border border-slate-700/60">
-              Douyin
-            </span>
-            <span className="px-3 py-1.5 rounded-full bg-gradient-to-r from-indigo-900/40 to-purple-900/40 border border-indigo-700/30 text-indigo-300">
+          {/* Desktop badges */}
+          <div className="hidden md:flex items-center gap-2 text-xs font-medium text-slate-400">
+            <span className="px-2.5 py-1 rounded-full bg-slate-800/80 border border-slate-700/60">TikTok</span>
+            <span className="px-2.5 py-1 rounded-full bg-slate-800/80 border border-slate-700/60">Douyin</span>
+            <span className="px-2.5 py-1 rounded-full bg-gradient-to-r from-indigo-900/40 to-purple-900/40 border border-indigo-700/30 text-indigo-300">
               ✦ HD Enhancer
             </span>
           </div>
+
+          {/* Mobile menu toggle */}
+          <button
+            className="md:hidden p-2 rounded-lg hover:bg-slate-800 transition cursor-pointer touch-target"
+            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+            aria-label="Toggle menu"
+          >
+            {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+          </button>
         </div>
+
+        {/* Mobile dropdown badges */}
+        {mobileMenuOpen && (
+          <div className="md:hidden border-t border-slate-800/60 px-3 py-3 flex flex-wrap gap-2 animate-slideDown safe-x">
+            <span className="px-3 py-1.5 rounded-full bg-slate-800/80 border border-slate-700/60 text-xs text-slate-400">TikTok</span>
+            <span className="px-3 py-1.5 rounded-full bg-slate-800/80 border border-slate-700/60 text-xs text-slate-400">Douyin</span>
+            <span className="px-3 py-1.5 rounded-full bg-gradient-to-r from-indigo-900/40 to-purple-900/40 border border-indigo-700/30 text-xs text-indigo-300">
+              ✦ HD Enhancer
+            </span>
+          </div>
+        )}
       </header>
 
-      {/* ── MAIN CONTENT ──────────────────────────────────────────────────── */}
-      <main className="max-w-4xl mx-auto px-4 sm:px-6 py-10 sm:py-16">
+      {/* ═══ MAIN ═════════════════════════════════════════════════════════════ */}
+      <main className="max-w-4xl mx-auto px-3 sm:px-6 py-6 sm:py-10 lg:py-16 safe-x">
 
         {/* ── Hero ──────────────────────────────────────────────────────────── */}
-        <div className="text-center mb-10 animate-fadeInUp">
-          <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-indigo-500/10 border border-indigo-500/20 text-indigo-300 text-xs font-medium mb-5">
-            <Sparkles className="w-3.5 h-3.5" />
+        <div className="text-center mb-6 sm:mb-10 animate-fadeInUp">
+          <div className="inline-flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-1 sm:py-1.5 rounded-full bg-indigo-500/10 border border-indigo-500/20 text-indigo-300 text-[11px] sm:text-xs font-medium mb-4 sm:mb-5">
+            <Sparkles className="w-3 sm:w-3.5 h-3 sm:h-3.5" />
             Miễn phí 100% • Không cần đăng nhập
           </div>
-          <h1 className="text-3xl sm:text-5xl font-extrabold tracking-tight mb-4">
+          <h1 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-extrabold tracking-tight mb-3 sm:mb-4 leading-tight">
             <span className="bg-gradient-to-r from-indigo-300 via-white to-purple-300 bg-clip-text text-transparent">
               Tải Video & Ảnh Không Logo
             </span>
           </h1>
-          <p className="text-slate-400 text-sm sm:text-base max-w-2xl mx-auto leading-relaxed">
-            Hỗ trợ tải video TikTok & Douyin chất lượng gốc Full HD, tùy chọn giữ / xóa Watermark,
-            tải nhạc nền MP3, ảnh cuộn Slideshow và nâng cấp độ nét ảnh lên 2K / 4K.
+          <p className="text-slate-400 text-xs sm:text-sm lg:text-base max-w-2xl mx-auto leading-relaxed px-2">
+            Hỗ trợ TikTok & Douyin chất lượng Full HD, giữ / xóa Watermark,
+            tải MP3, Slideshow và nâng cấp ảnh lên 2K / 4K.
           </p>
         </div>
 
-        {/* ── Search Box ────────────────────────────────────────────────────── */}
+        {/* ── URL Input ─────────────────────────────────────────────────────── */}
         <form
           onSubmit={handleExtract}
-          className="bg-slate-900/90 p-2.5 rounded-2xl border border-slate-800 shadow-2xl shadow-indigo-950/30 mb-8 animate-fadeInUp"
+          className="bg-slate-900/90 p-2 sm:p-2.5 rounded-2xl border border-slate-800 shadow-2xl shadow-indigo-950/30 mb-6 sm:mb-8 animate-fadeInUp"
           style={{ animationDelay: '80ms' }}
         >
-          <div className="flex flex-col sm:flex-row gap-2.5">
-            {/* Input field */}
+          <div className="flex flex-col sm:flex-row gap-2 sm:gap-2.5">
+            {/* Input */}
             <div className="relative flex-1 flex items-center">
               <input
-                type="text"
+                type="url"
+                inputMode="url"
                 value={url}
                 onChange={(e) => { setUrl(e.target.value); setError(''); }}
-                placeholder="Dán link TikTok / Douyin vào đây (VD: https://vt.tiktok.com/...)"
-                className="w-full bg-slate-950 text-slate-100 placeholder-slate-500 pl-4 pr-24 py-4 rounded-xl border border-slate-800 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/30 transition text-sm"
+                placeholder="Dán link TikTok / Douyin vào đây..."
+                className="w-full bg-slate-950 text-slate-100 placeholder-slate-500 pl-3 sm:pl-4 pr-20 sm:pr-24 py-3.5 sm:py-4 rounded-xl border border-slate-800 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/30 transition text-sm"
               />
               {url ? (
                 <button
                   type="button"
                   onClick={handleClear}
-                  className="absolute right-2.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-rose-500/20 hover:text-rose-400 text-slate-400 text-xs font-medium flex items-center gap-1.5 transition cursor-pointer"
+                  className="absolute right-2 sm:right-2.5 px-2.5 sm:px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-rose-500/20 hover:text-rose-400 text-slate-400 text-xs font-medium flex items-center gap-1 sm:gap-1.5 transition cursor-pointer touch-target"
                 >
-                  <Trash2 className="w-3.5 h-3.5" /> Xóa
+                  <Trash2 className="w-3.5 h-3.5" /> <span className="hidden xs:inline">Xóa</span>
                 </button>
               ) : (
                 <button
                   type="button"
                   onClick={handlePaste}
-                  className="absolute right-2.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-indigo-500/20 text-indigo-300 text-xs font-medium flex items-center gap-1.5 transition cursor-pointer"
+                  className="absolute right-2 sm:right-2.5 px-2.5 sm:px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-indigo-500/20 text-indigo-300 text-xs font-medium flex items-center gap-1 sm:gap-1.5 transition cursor-pointer touch-target"
                 >
                   <Clipboard className="w-3.5 h-3.5" /> Dán
                 </button>
               )}
             </div>
 
-            {/* Submit button */}
+            {/* Submit */}
             <button
               type="submit"
               disabled={loading}
-              className="px-7 py-4 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 disabled:opacity-50 disabled:cursor-not-allowed font-semibold text-sm text-white shadow-lg shadow-indigo-600/25 flex items-center justify-center gap-2 transition-all cursor-pointer active:scale-[0.97]"
+              className="w-full sm:w-auto px-5 sm:px-7 py-3.5 sm:py-4 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 disabled:opacity-50 disabled:cursor-not-allowed font-semibold text-sm text-white shadow-lg shadow-indigo-600/25 flex items-center justify-center gap-2 transition-all cursor-pointer active:scale-[0.97] touch-target"
             >
               {loading ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  Đang phân tích...
-                </>
+                <><Loader2 className="w-4 h-4 animate-spin" /> Đang phân tích...</>
               ) : (
-                <>
-                  <Download className="w-4 h-4" />
-                  Lấy Link Tải
-                </>
+                <><Download className="w-4 h-4" /> Lấy Link Tải</>
               )}
             </button>
           </div>
         </form>
 
-        {/* ── Thông báo lỗi ──────────────────────────────────────────────── */}
+        {/* ── Error ─────────────────────────────────────────────────────────── */}
         {error && (
-          <div className="mb-8 p-4 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-sm flex items-center gap-3 animate-fadeInUp">
-            <AlertCircle className="w-5 h-5 shrink-0" />
+          <div className="mb-6 sm:mb-8 p-3 sm:p-4 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs sm:text-sm flex items-start sm:items-center gap-2.5 sm:gap-3 animate-fadeInUp">
+            <AlertCircle className="w-4 sm:w-5 h-4 sm:h-5 shrink-0 mt-0.5 sm:mt-0" />
             <span>{error}</span>
           </div>
         )}
 
-        {/* ── Loading skeleton ───────────────────────────────────────────── */}
+        {/* ── Loading skeleton (responsive) ─────────────────────────────────── */}
         {loading && (
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 mb-8 animate-fadeInUp">
-            <div className="flex gap-6">
-              <div className="w-44 h-56 rounded-xl bg-slate-800 animate-shimmer shrink-0" />
-              <div className="flex-1 space-y-4 py-2">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 sm:p-6 mb-6 sm:mb-8 animate-fadeInUp">
+            <div className="flex flex-col sm:flex-row gap-4 sm:gap-6">
+              <div className="w-full sm:w-36 md:w-44 h-48 sm:h-56 rounded-xl bg-slate-800 animate-shimmer shrink-0" />
+              <div className="flex-1 space-y-3 sm:space-y-4 py-1 sm:py-2">
                 <div className="h-4 bg-slate-800 rounded-lg w-3/4 animate-shimmer" />
                 <div className="h-3 bg-slate-800 rounded-lg w-1/2 animate-shimmer" />
                 <div className="h-3 bg-slate-800 rounded-lg w-2/3 animate-shimmer" />
-                <div className="grid grid-cols-2 gap-3 pt-4">
-                  <div className="h-12 bg-slate-800 rounded-xl animate-shimmer" />
-                  <div className="h-12 bg-slate-800 rounded-xl animate-shimmer" />
+                <div className="grid grid-cols-2 gap-3 pt-3 sm:pt-4">
+                  <div className="h-11 sm:h-12 bg-slate-800 rounded-xl animate-shimmer" />
+                  <div className="h-11 sm:h-12 bg-slate-800 rounded-xl animate-shimmer" />
                 </div>
               </div>
             </div>
           </div>
         )}
 
-        {/* ══════════════════════════════════════════════════════════════════ */}
-        {/* KẾT QUẢ BÓC TÁCH                                                 */}
-        {/* ══════════════════════════════════════════════════════════════════ */}
+        {/* ══════════════════════════════════════════════════════════════════════ */}
+        {/* RESULT CARD                                                          */}
+        {/* ══════════════════════════════════════════════════════════════════════ */}
         {mediaData && !loading && (
           <div className="bg-slate-900 border border-slate-800 rounded-2xl shadow-xl overflow-hidden animate-fadeInUp">
+            <div className="p-4 sm:p-6">
+              <div className="flex flex-col sm:flex-row gap-4 sm:gap-6 pb-4 sm:pb-6 border-b border-slate-800/80">
 
-            {/* ── Thông tin bài đăng + Nút tải video ─────────────────────── */}
-            <div className="p-6">
-              <div className="flex flex-col md:flex-row gap-6 pb-6 border-b border-slate-800/80">
-                {/* Cover image */}
-                <div className="w-full md:w-44 h-56 rounded-xl overflow-hidden bg-slate-950 shrink-0 relative border border-slate-800 group">
+                {/* Cover thumbnail */}
+                <div className="w-full sm:w-36 md:w-44 h-52 sm:h-56 rounded-xl overflow-hidden bg-slate-950 shrink-0 relative border border-slate-800 group mx-auto sm:mx-0 max-w-[280px] sm:max-w-none">
                   <img
                     src={mediaData.cover}
                     alt="Cover"
                     className="w-full h-full object-cover group-hover:scale-105 transition duration-500"
                     loading="lazy"
+                    decoding="async"
                   />
-                  {/* Badge loại bài đăng */}
-                  <span className="absolute top-2.5 left-2.5 px-2.5 py-1 rounded-lg bg-black/70 backdrop-blur-md text-xs font-semibold flex items-center gap-1.5">
+                  {/* Type badge */}
+                  <span className="absolute top-2 left-2 sm:top-2.5 sm:left-2.5 px-2 sm:px-2.5 py-0.5 sm:py-1 rounded-lg bg-black/70 backdrop-blur-md text-[11px] sm:text-xs font-semibold flex items-center gap-1 sm:gap-1.5">
                     {mediaData.type === 'slideshow' ? (
-                      <>
-                        <ImageIcon className="w-3.5 h-3.5 text-emerald-400" />
-                        <span>Slide ({mediaData.images.length})</span>
-                      </>
+                      <><ImageIcon className="w-3 sm:w-3.5 h-3 sm:h-3.5 text-emerald-400" /> Slide ({mediaData.images.length})</>
                     ) : (
-                      <>
-                        <Video className="w-3.5 h-3.5 text-indigo-400" />
-                        <span>Video</span>
-                      </>
+                      <><Video className="w-3 sm:w-3.5 h-3 sm:h-3.5 text-indigo-400" /> Video</>
                     )}
                   </span>
-                  {/* Duration badge */}
+                  {/* Duration */}
                   {mediaData.duration > 0 && (
-                    <span className="absolute bottom-2.5 right-2.5 px-2 py-0.5 rounded-md bg-black/70 backdrop-blur-md text-[11px] font-mono font-semibold flex items-center gap-1">
-                      <Clock className="w-3 h-3" />
-                      {formatDuration(mediaData.duration)}
+                    <span className="absolute bottom-2 right-2 sm:bottom-2.5 sm:right-2.5 px-1.5 sm:px-2 py-0.5 rounded-md bg-black/70 backdrop-blur-md text-[10px] sm:text-[11px] font-mono font-semibold flex items-center gap-1">
+                      <Clock className="w-2.5 sm:w-3 h-2.5 sm:h-3" />
+                      {fmtDuration(mediaData.duration)}
                     </span>
                   )}
                 </div>
 
-                {/* Thông tin chi tiết */}
+                {/* Info + Buttons */}
                 <div className="flex-1 flex flex-col justify-between min-w-0">
                   <div>
-                    {/* Tác giả */}
-                    <div className="flex items-center gap-3 mb-3">
+                    {/* Author */}
+                    <div className="flex items-center gap-2.5 sm:gap-3 mb-2 sm:mb-3">
                       {mediaData.author.avatar && (
                         <img
                           src={mediaData.author.avatar}
                           alt={mediaData.author.nickname}
-                          className="w-10 h-10 rounded-full border-2 border-indigo-500/40"
+                          className="w-9 h-9 sm:w-10 sm:h-10 rounded-full border-2 border-indigo-500/40"
                           loading="lazy"
                         />
                       )}
                       <div className="min-w-0">
-                        <h3 className="font-bold text-slate-100 text-base truncate">
-                          {mediaData.author.nickname}
-                        </h3>
+                        <h3 className="font-bold text-slate-100 text-sm sm:text-base truncate">{mediaData.author.nickname}</h3>
                         {mediaData.author.uniqueId && (
-                          <p className="text-xs text-slate-400 truncate">@{mediaData.author.uniqueId}</p>
+                          <p className="text-[11px] sm:text-xs text-slate-400 truncate">@{mediaData.author.uniqueId}</p>
                         )}
                       </div>
                     </div>
 
-                    {/* Tiêu đề bài đăng */}
-                    <p className="text-sm text-slate-300 line-clamp-3 leading-relaxed mb-4">
+                    {/* Title */}
+                    <p className="text-xs sm:text-sm text-slate-300 line-clamp-2 sm:line-clamp-3 leading-relaxed mb-3 sm:mb-4">
                       {mediaData.title}
                     </p>
 
-                    {/* Số liệu tương tác */}
+                    {/* Stats */}
                     {mediaData.stats && (
-                      <div className="flex flex-wrap gap-4 text-xs text-slate-400 mb-4">
-                        {mediaData.stats.plays != null && (
-                          <span className="flex items-center gap-1.5">
-                            <Eye className="w-3.5 h-3.5" /> {formatCount(mediaData.stats.plays)}
-                          </span>
-                        )}
-                        {mediaData.stats.likes != null && (
-                          <span className="flex items-center gap-1.5">
-                            <Heart className="w-3.5 h-3.5 text-rose-400" /> {formatCount(mediaData.stats.likes)}
-                          </span>
-                        )}
-                        {mediaData.stats.comments != null && (
-                          <span className="flex items-center gap-1.5">
-                            <MessageCircle className="w-3.5 h-3.5" /> {formatCount(mediaData.stats.comments)}
-                          </span>
-                        )}
-                        {mediaData.stats.shares != null && (
-                          <span className="flex items-center gap-1.5">
-                            <Share2 className="w-3.5 h-3.5" /> {formatCount(mediaData.stats.shares)}
-                          </span>
-                        )}
+                      <div className="flex flex-wrap gap-3 sm:gap-4 text-[11px] sm:text-xs text-slate-400 mb-3 sm:mb-4">
+                        <Stat icon={Eye}            value={mediaData.stats.plays} />
+                        <Stat icon={Heart}          value={mediaData.stats.likes}    color="text-rose-400" />
+                        <Stat icon={MessageCircle}  value={mediaData.stats.comments} />
+                        <Stat icon={Share2}         value={mediaData.stats.shares} />
                       </div>
                     )}
                   </div>
 
-                  {/* ── CÁC NÚT TẢI VIDEO ────────────────────────────────── */}
+                  {/* ── VIDEO DOWNLOAD BUTTONS ───────────────────────────────── */}
                   {mediaData.type === 'video' && (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 stagger-children">
-                      {/* Không Logo — SD */}
+                    <div className="grid grid-cols-1 xs:grid-cols-2 gap-2 sm:gap-3 stagger-children">
                       {mediaData.downloads.noWatermarkSD && (
-                        <a
-                          href={proxyUrl(mediaData.downloads.noWatermarkSD, 'NoWM_SD')}
-                          className="flex items-center justify-between px-4 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-medium text-sm transition-all active:scale-[0.97] group"
-                        >
-                          <span className="flex items-center gap-2">
-                            <Download className="w-4 h-4" /> Không Logo (SD)
-                          </span>
-                          <span className="text-xs px-2.5 py-0.5 rounded-lg bg-indigo-800/80 group-hover:bg-indigo-700">
-                            {mediaData.sizeInfo.sdSize}
-                          </span>
-                        </a>
+                        <DlButton
+                          href={proxy(mediaData.downloads.noWatermarkSD, 'NoWM_SD')}
+                          icon={Download}
+                          label="Không Logo (SD)"
+                          badge={mediaData.sizeInfo.sdSize}
+                          variant="primary"
+                        />
                       )}
-
-                      {/* Không Logo — Full HD */}
                       {mediaData.downloads.noWatermarkHD && (
-                        <a
-                          href={proxyUrl(mediaData.downloads.noWatermarkHD, 'NoWM_HD')}
-                          className="flex items-center justify-between px-4 py-3 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-medium text-sm shadow-lg shadow-emerald-950/40 transition-all active:scale-[0.97] group"
-                        >
-                          <span className="flex items-center gap-2">
-                            <Sparkles className="w-4 h-4" /> Không Logo (Full HD)
-                          </span>
-                          <span className="text-xs px-2.5 py-0.5 rounded-lg bg-black/25 group-hover:bg-black/30">
-                            {mediaData.sizeInfo.hdSize}
-                          </span>
-                        </a>
+                        <DlButton
+                          href={proxy(mediaData.downloads.noWatermarkHD, 'NoWM_HD')}
+                          icon={Sparkles}
+                          label="Không Logo (Full HD)"
+                          badge={mediaData.sizeInfo.hdSize}
+                          variant="success"
+                        />
                       )}
-
-                      {/* Có Watermark */}
                       {mediaData.downloads.watermark && (
-                        <a
-                          href={proxyUrl(mediaData.downloads.watermark, 'Watermark')}
-                          className="flex items-center justify-between px-4 py-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-medium text-sm transition-all border border-slate-700/60 active:scale-[0.97]"
-                        >
-                          <span className="flex items-center gap-2">
-                            <Video className="w-4 h-4 text-slate-400" /> Có Watermark
-                          </span>
-                          <span className="text-xs text-slate-400">{mediaData.sizeInfo.wmSize}</span>
-                        </a>
+                        <DlButton
+                          href={proxy(mediaData.downloads.watermark, 'Watermark')}
+                          icon={Video}
+                          label="Có Watermark"
+                          badge={mediaData.sizeInfo.wmSize}
+                        />
                       )}
-
-                      {/* Nhạc nền MP3 */}
                       {mediaData.downloads.music && (
-                        <a
-                          href={proxyUrl(mediaData.downloads.music, 'Music', 'mp3')}
-                          className="flex items-center justify-between px-4 py-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-medium text-sm transition-all border border-slate-700/60 active:scale-[0.97]"
-                        >
-                          <span className="flex items-center gap-2 min-w-0">
-                            <Music className="w-4 h-4 text-purple-400 shrink-0" />
-                            <span className="truncate">
-                              {mediaData.downloads.musicTitle
-                                ? `♫ ${mediaData.downloads.musicTitle}`
-                                : 'Tải Nhạc Nền (MP3)'}
-                            </span>
-                          </span>
-                          <span className="text-xs text-slate-400 shrink-0 ml-2">MP3</span>
-                        </a>
+                        <DlButton
+                          href={proxy(mediaData.downloads.music, 'Music', 'mp3')}
+                          icon={Music}
+                          label={mediaData.downloads.musicTitle ? `♫ ${mediaData.downloads.musicTitle}` : 'Nhạc Nền (MP3)'}
+                          badge="MP3"
+                        />
                       )}
                     </div>
                   )}
@@ -416,30 +435,30 @@ export default function App() {
               </div>
             </div>
 
-            {/* ── DANH SÁCH ẢNH SLIDESHOW + NÂNG CẤP ĐỘ NÉT ──────────── */}
+            {/* ── SLIDESHOW IMAGE GALLERY ────────────────────────────────────── */}
             {mediaData.type === 'slideshow' && mediaData.images.length > 0 && (
-              <div className="px-6 pb-6">
-                {/* Tiêu đề + Bộ chọn hệ số upscale */}
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+              <div className="px-4 sm:px-6 pb-4 sm:pb-6">
+                {/* Header + upscale toggle */}
+                <div className="flex flex-col xs:flex-row xs:items-center justify-between gap-3 sm:gap-4 mb-4 sm:mb-6">
                   <div>
-                    <h4 className="font-bold text-base text-white flex items-center gap-2">
-                      <Layers className="w-4 h-4 text-indigo-400" />
-                      Ảnh gốc không logo ({mediaData.images.length} ảnh)
+                    <h4 className="font-bold text-sm sm:text-base text-white flex items-center gap-1.5 sm:gap-2">
+                      <Layers className="w-3.5 sm:w-4 h-3.5 sm:h-4 text-indigo-400" />
+                      Ảnh gốc ({mediaData.images.length} ảnh)
                     </h4>
-                    <p className="text-xs text-slate-400 mt-1">
-                      Tải ảnh gốc hoặc nâng cấp chất lượng bằng bộ lọc Super-Resolution.
+                    <p className="text-[11px] sm:text-xs text-slate-400 mt-0.5 sm:mt-1">
+                      Tải ảnh gốc hoặc nâng cấp bằng Super-Resolution.
                     </p>
                   </div>
 
-                  {/* Toggle 2x / 4x */}
-                  <div className="flex items-center gap-1.5 bg-slate-950 p-1.5 rounded-xl border border-slate-800">
-                    <span className="text-xs text-slate-400 pl-2.5 hidden sm:inline">Nâng cấp:</span>
+                  {/* 2x / 4x toggle */}
+                  <div className="flex items-center gap-1 sm:gap-1.5 bg-slate-950 p-1 sm:p-1.5 rounded-xl border border-slate-800 self-start xs:self-auto">
+                    <span className="text-[11px] sm:text-xs text-slate-400 pl-2 hidden sm:inline">Nâng cấp:</span>
                     {['2', '4'].map((f) => (
                       <button
                         key={f}
                         type="button"
                         onClick={() => setUpscaleFactor(f)}
-                        className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${
+                        className={`px-3 sm:px-3.5 py-1.5 rounded-lg text-[11px] sm:text-xs font-bold transition cursor-pointer touch-target ${
                           upscaleFactor === f
                             ? f === '2'
                               ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30'
@@ -453,56 +472,38 @@ export default function App() {
                   </div>
                 </div>
 
-                {/* Grid ảnh */}
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 stagger-children">
+                {/* Responsive image grid:
+                    - Phone portrait:  2 columns
+                    - Phone landscape: 3 columns
+                    - Tablet:          3-4 columns
+                    - Desktop:         4 columns
+                */}
+                <div className="grid grid-cols-2 xs:grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2.5 sm:gap-4 stagger-children">
                   {mediaData.images.map((imgUrl, idx) => (
-                    <div
+                    <ImageCard
                       key={idx}
-                      className="bg-slate-950 border border-slate-800 rounded-xl overflow-hidden flex flex-col group hover:border-slate-700 transition"
-                    >
-                      {/* Preview ảnh */}
-                      <div className="aspect-[3/4] overflow-hidden bg-slate-900 relative">
-                        <img
-                          src={imgUrl}
-                          alt={`Slide ${idx + 1}`}
-                          className="w-full h-full object-cover group-hover:scale-105 transition duration-500"
-                          loading="lazy"
-                        />
-                        <span className="absolute top-2 right-2 px-2 py-0.5 rounded-md bg-black/70 backdrop-blur-sm text-[11px] font-bold text-white/80">
-                          #{idx + 1}
-                        </span>
-                      </div>
-
-                      {/* Nút tải */}
-                      <div className="p-2.5 flex flex-col gap-2">
-                        <a
-                          href={proxyUrl(imgUrl, `Slide_${idx + 1}`, 'jpeg')}
-                          className="w-full py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-medium text-center flex items-center justify-center gap-1.5 transition active:scale-[0.97]"
-                        >
-                          <Download className="w-3.5 h-3.5" /> Ảnh gốc
-                        </a>
-                        <a
-                          href={upscaleUrl(imgUrl, idx)}
-                          className="w-full py-2 rounded-lg bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-xs font-bold text-white text-center flex items-center justify-center gap-1.5 transition shadow-md shadow-indigo-600/20 active:scale-[0.97]"
-                        >
-                          <Sparkles className="w-3.5 h-3.5" /> Làm nét {upscaleFactor}x
-                        </a>
-                      </div>
-                    </div>
+                      imgUrl={imgUrl}
+                      idx={idx}
+                      proxyUrl={proxy(imgUrl, `Slide_${idx + 1}`, 'jpeg')}
+                      upscaleUrl={upscale(imgUrl, idx)}
+                      factor={upscaleFactor}
+                    />
                   ))}
                 </div>
 
-                {/* Nút tải nhạc nền nếu có */}
+                {/* Slideshow music button */}
                 {mediaData.downloads.music && (
-                  <div className="mt-5">
+                  <div className="mt-4 sm:mt-5">
                     <a
-                      href={proxyUrl(mediaData.downloads.music, 'Slideshow_Music', 'mp3')}
-                      className="inline-flex items-center gap-2 px-5 py-3 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700/60 text-sm font-medium transition active:scale-[0.97]"
+                      href={proxy(mediaData.downloads.music, 'Slideshow_Music', 'mp3')}
+                      className="inline-flex items-center gap-2 px-4 sm:px-5 py-2.5 sm:py-3 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700/60 text-xs sm:text-sm font-medium transition active:scale-[0.97] touch-target"
                     >
                       <Music className="w-4 h-4 text-purple-400" />
-                      {mediaData.downloads.musicTitle
-                        ? `Nhạc nền: ${mediaData.downloads.musicTitle}`
-                        : 'Tải nhạc nền Slideshow (MP3)'}
+                      <span className="truncate">
+                        {mediaData.downloads.musicTitle
+                          ? `Nhạc nền: ${mediaData.downloads.musicTitle}`
+                          : 'Tải nhạc nền Slideshow (MP3)'}
+                      </span>
                     </a>
                   </div>
                 )}
@@ -511,53 +512,29 @@ export default function App() {
           </div>
         )}
 
-        {/* ══════════════════════════════════════════════════════════════════ */}
-        {/* FEATURE HIGHLIGHTS                                                */}
-        {/* ══════════════════════════════════════════════════════════════════ */}
-        <div
-          className="grid grid-cols-1 md:grid-cols-3 gap-5 mt-14 stagger-children"
-          style={{ animationDelay: '160ms' }}
-        >
-          {[
-            {
-              icon: <CheckCircle2 className="w-6 h-6 text-indigo-400" />,
-              title: 'Tùy chọn Watermark linh hoạt',
-              desc: 'Lấy luồng phát gốc sạch 100% không dính ID hoặc giữ lại logo nguyên bản tùy nhu cầu sử dụng.',
-              gradient: 'from-indigo-500/10 to-transparent'
-            },
-            {
-              icon: <Sparkles className="w-6 h-6 text-purple-400" />,
-              title: 'Nâng cấp chất lượng 2K / 4K',
-              desc: 'Tích hợp bộ lọc nội suy Lanczos3 kết hợp Unsharp Masking giúp tăng độ chi tiết cho ảnh bị nén mờ.',
-              gradient: 'from-purple-500/10 to-transparent'
-            },
-            {
-              icon: <ShieldCheck className="w-6 h-6 text-emerald-400" />,
-              title: 'Stream Proxy tốc độ cao',
-              desc: 'Truyền tải trực tiếp từ CDN gốc về trình duyệt qua luồng (stream pipe) — không lưu file tạm trên server.',
-              gradient: 'from-emerald-500/10 to-transparent'
-            }
-          ].map((feat, i) => (
+        {/* ═══ FEATURE CARDS ══════════════════════════════════════════════════ */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-5 mt-10 sm:mt-14 stagger-children">
+          {features.map((f, i) => (
             <div
               key={i}
-              className={`p-5 rounded-2xl bg-gradient-to-b ${feat.gradient} bg-slate-900/50 border border-slate-800/80 hover:border-slate-700 transition group`}
+              className={`p-4 sm:p-5 rounded-2xl bg-gradient-to-b ${f.grad} to-transparent bg-slate-900/50 border border-slate-800/80 hover:border-slate-700 transition group`}
             >
-              <div className="mb-3 group-hover:scale-110 transition">{feat.icon}</div>
-              <h3 className="font-semibold text-sm text-white mb-1.5">{feat.title}</h3>
-              <p className="text-xs text-slate-400 leading-relaxed">{feat.desc}</p>
+              <div className="mb-2 sm:mb-3 group-hover:scale-110 transition">{f.icon}</div>
+              <h3 className="font-semibold text-xs sm:text-sm text-white mb-1 sm:mb-1.5">{f.title}</h3>
+              <p className="text-[11px] sm:text-xs text-slate-400 leading-relaxed">{f.desc}</p>
             </div>
           ))}
         </div>
 
-        {/* ── FAQ nhỏ ──────────────────────────────────────────────────────── */}
-        <div className="mt-14 text-center">
-          <p className="text-xs text-slate-500">
-            Hỗ trợ TikTok, Douyin, v.douyin.com, vt.tiktok.com, vm.tiktok.com — Video & Slide ảnh
+        {/* ═══ FOOTER ═════════════════════════════════════════════════════════ */}
+        <footer className="mt-10 sm:mt-14 text-center pb-4 safe-bottom">
+          <p className="text-[11px] sm:text-xs text-slate-500">
+            TikTok • Douyin • vt.tiktok.com • v.douyin.com • vm.tiktok.com
           </p>
-          <p className="text-xs text-slate-600 mt-1">
-            © {new Date().getFullYear()} SnapBunny.ai — Công cụ tải đa phương tiện miễn phí.
+          <p className="text-[10px] sm:text-xs text-slate-600 mt-1">
+            © {new Date().getFullYear()} SnapBunny.ai
           </p>
-        </div>
+        </footer>
       </main>
     </div>
   );
