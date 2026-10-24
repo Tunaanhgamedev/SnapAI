@@ -1,29 +1,55 @@
 @import "tailwindcss";
 
-/* ── Custom animations ────────────────────────────────────────────────── */
+/* ═══════════════════════════════════════════════════════════════════════════
+   GLOBAL RESETS & TYPOGRAPHY
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+html {
+  -webkit-tap-highlight-color: transparent;       /* Remove blue tap flash on mobile */
+  -webkit-text-size-adjust: 100%;                 /* Prevent font scaling in landscape */
+  text-size-adjust: 100%;
+  scroll-behavior: smooth;
+}
+
+body {
+  overscroll-behavior-y: none;                    /* Prevent pull-to-refresh on mobile */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Prevent iOS zoom on input focus (font < 16px triggers zoom) */
+@media (max-width: 767px) {
+  input, textarea, select {
+    font-size: 16px !important;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   KEYFRAME ANIMATIONS
+   ═══════════════════════════════════════════════════════════════════════════ */
+
 @keyframes fadeInUp {
-  from {
-    opacity: 0;
-    transform: translateY(16px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+  from { opacity: 0; transform: translateY(20px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
 
 @keyframes shimmer {
-  0% { background-position: -200% 0; }
-  100% { background-position: 200% 0; }
+  0%   { background-position: -200% 0; }
+  100% { background-position:  200% 0; }
 }
 
 @keyframes pulse-ring {
-  0% { transform: scale(0.9); opacity: 0.7; }
-  50% { transform: scale(1); opacity: 1; }
-  100% { transform: scale(0.9); opacity: 0.7; }
+  0%, 100% { transform: scale(0.92); opacity: 0.7; }
+  50%      { transform: scale(1);    opacity: 1;   }
 }
 
-/* Utility classes */
+@keyframes slideDown {
+  from { opacity: 0; transform: translateY(-8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ── Utility animation classes ──────────────────────────────────────────── */
+
 .animate-fadeInUp {
   animation: fadeInUp 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
@@ -38,21 +64,74 @@
   animation: pulse-ring 2s ease-in-out infinite;
 }
 
-/* Stagger children animations */
+.animate-slideDown {
+  animation: slideDown 0.3s ease-out both;
+}
+
+/* ── Staggered entrance for child elements ──────────────────────────────── */
+
 .stagger-children > * {
   animation: fadeInUp 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 .stagger-children > *:nth-child(1) { animation-delay: 0ms; }
-.stagger-children > *:nth-child(2) { animation-delay: 60ms; }
-.stagger-children > *:nth-child(3) { animation-delay: 120ms; }
-.stagger-children > *:nth-child(4) { animation-delay: 180ms; }
-.stagger-children > *:nth-child(5) { animation-delay: 240ms; }
-.stagger-children > *:nth-child(6) { animation-delay: 300ms; }
-.stagger-children > *:nth-child(7) { animation-delay: 360ms; }
-.stagger-children > *:nth-child(8) { animation-delay: 420ms; }
+.stagger-children > *:nth-child(2) { animation-delay: 50ms; }
+.stagger-children > *:nth-child(3) { animation-delay: 100ms; }
+.stagger-children > *:nth-child(4) { animation-delay: 150ms; }
+.stagger-children > *:nth-child(5) { animation-delay: 200ms; }
+.stagger-children > *:nth-child(6) { animation-delay: 250ms; }
+.stagger-children > *:nth-child(7) { animation-delay: 300ms; }
+.stagger-children > *:nth-child(8) { animation-delay: 350ms; }
+.stagger-children > *:nth-child(9) { animation-delay: 400ms; }
+.stagger-children > *:nth-child(10){ animation-delay: 450ms; }
+.stagger-children > *:nth-child(11){ animation-delay: 500ms; }
+.stagger-children > *:nth-child(12){ animation-delay: 550ms; }
 
-/* Scrollbar styling */
-::-webkit-scrollbar { width: 6px; height: 6px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: #334155; border-radius: 999px; }
-::-webkit-scrollbar-thumb:hover { background: #475569; }
+/* ═══════════════════════════════════════════════════════════════════════════
+   RESPONSIVE TOUCH TARGETS (WCAG 2.2 — minimum 44×44px on mobile)
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+@media (max-width: 639px) {
+  .touch-target {
+    min-height: 48px;
+    min-width: 48px;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   SAFE AREA INSETS (iPhone notch, Dynamic Island, Android gesture bar)
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.safe-top    { padding-top:    env(safe-area-inset-top, 0); }
+.safe-bottom { padding-bottom: env(safe-area-inset-bottom, 0); }
+.safe-x {
+  padding-left:  env(safe-area-inset-left, 0);
+  padding-right: env(safe-area-inset-right, 0);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   CUSTOM SCROLLBAR (desktop only — mobile uses native)
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+@media (min-width: 768px) {
+  ::-webkit-scrollbar       { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: #334155; border-radius: 999px; }
+  ::-webkit-scrollbar-thumb:hover { background: #475569; }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   IMAGE GALLERY HORIZONTAL SCROLL (mobile slideshow)
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.gallery-scroll {
+  scroll-snap-type: x mandatory;
+  -webkit-overflow-scrolling: touch;
+}
+
+.gallery-scroll > * {
+  scroll-snap-align: start;
+}
+
+/* Hide scrollbar for gallery on mobile, keep functionality */
+.gallery-scroll::-webkit-scrollbar { display: none; }
+.gallery-scroll { -ms-overflow-style: none; scrollbar-width: none; }
