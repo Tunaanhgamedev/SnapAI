@@ -1,39 +1,63 @@
 # ⚡ SnapAI (SnapBunny.ai)
 
-> High-performance, watermark-free media downloader and AI enhancer web platform supporting TikTok, Douyin, and social media platforms with 2x/4x Super-Resolution image upscaling.
+> High-performance, watermark-free media downloader and AI enhancer platform for TikTok & Douyin with 2x/4x Super-Resolution image upscaling. Fully responsive — works on phones, tablets, desktops, and every window size in between.
 
 [![Node.js](https://img.shields.io/badge/Node.js-18+-339933?logo=node.js&logoColor=white)](https://nodejs.org/)
 [![React](https://img.shields.io/badge/React-18.3-61DAFB?logo=react&logoColor=black)](https://react.dev/)
 [![Vite](https://img.shields.io/badge/Vite-6.0-646CFF?logo=vite&logoColor=white)](https://vitejs.dev/)
 [![TailwindCSS](https://img.shields.io/badge/TailwindCSS-v4-06B6D4?logo=tailwindcss&logoColor=white)](https://tailwindcss.com/)
+[![Responsive](https://img.shields.io/badge/Responsive-Mobile%20First-FF6B6B)](https://developer.mozilla.org/en-US/docs/Learn/CSS/CSS_layout/Responsive_Design)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 ---
 
 ## 🌟 Key Features
 
-- 🎬 **Multi-Platform Link Extractor**: Parses TikTok, Douyin, and short URLs (`vt.tiktok.com`, `v.douyin.com`) for videos and slideshows.
-- 🚫 **No-Watermark Video Streams**: Direct access to pristine original resolution without watermarks or user tags.
-- 📐 **Quality Resolution Selection**: Choose between Standard Definition (SD) and Full High Definition (HD).
-- 🖼️ **Super-Resolution Image Enhancer**: Fast local 2x / 4x image upscaling via **Sharp** (Lanczos3 kernel + Unsharp Masking) running on CPU.
-- 🎵 **Audio Extraction**: Download background music tracks directly as MP3 files.
-- 🔒 **Stream Proxy**: Pipes media chunks directly from upstream CDNs to the browser, bypassing CORS restrictions and 403 Forbidden referrer checks.
-- 🤖 **AI Upscaling Ready**: Pre-wired integration hook for cloud GPU inference (Real-ESRGAN / GFPGAN via Replicate API).
+- 🎬 **Multi-Platform Link Extractor** — Parses TikTok, Douyin, and short URLs (`vt.tiktok.com`, `v.douyin.com`) for videos and slideshows.
+- 🚫 **No-Watermark Video Streams** — Direct access to pristine original resolution without watermarks or user tags.
+- 📐 **Quality Resolution Selection** — Choose between Standard Definition (SD) and Full High Definition (HD).
+- 🖼️ **Super-Resolution Image Enhancer** — Fast local 2x / 4x upscaling via **Sharp** (Lanczos3 + Unsharp Masking) on CPU.
+- 🎵 **Audio Extraction** — Download background music tracks directly as MP3 files.
+- 🔒 **Stream Proxy** — Pipes media from upstream CDNs to the browser, bypassing CORS and 403 referrer checks.
+- 🤖 **AI Upscaling Ready** — Pre-wired for Real-ESRGAN / GFPGAN via Replicate API.
+- 📱 **Fully Responsive** — Adaptive layout for phones (320px+), tablets, laptops, desktops, and resized browser windows.
+
+---
+
+## 📱 Responsive Design
+
+The UI adapts seamlessly across all screen sizes and orientations:
+
+| Device | Screen Width | Layout |
+|:-------|:-------------|:-------|
+| 📱 Phone (portrait) | 320px — 639px | Single column, stacked buttons, touch-friendly 48px targets |
+| 📱 Phone (landscape) | 640px — 767px | 2-column grid, side-by-side buttons |
+| 📋 Tablet | 768px — 1023px | 3-column image grid, expanded info cards |
+| 💻 Laptop / Desktop | 1024px+ | Full 4-column grid, all metadata visible |
+| 🪟 Narrow window | Any width | Reflows just like the matching mobile breakpoint |
+
+**Additional mobile optimizations:**
+- Safe area insets for iPhone notch / Dynamic Island / Android gesture bar
+- iOS zoom prevention on input focus (16px minimum font)
+- Touch targets meet WCAG 2.2 minimum (44×44px)
+- Overscroll behavior disabled to prevent accidental pull-to-refresh
+- `viewport-fit=cover` for edge-to-edge rendering
+- Mobile hamburger menu for header navigation
 
 ---
 
 ## 🏗️ System Architecture
 
 ```text
-[ Client (Web UI - React + Vite + Tailwind v4) ]
+[ Client (React + Vite + Tailwind v4) ]
                    │
-                   │ (HTTP Requests: Extract / Download Proxy / Upscale)
+                   │ HTTP Requests
                    ▼
 [ Backend Gateway (Node.js + Express) ]
-   ├──► 1. Extractor Service: Fetches clean CDN URLs, metadata & formats
-   ├──► 2. Stream Proxy: Direct pipe bypasses CDN CORS & 403 blocks
-   ├──► 3. Image Enhancer: Lanczos3 + Unsharp Masking (Fast Local CPU)
-   └──► 4. Cloud AI Worker (Optional): Real-ESRGAN / GFPGAN via Replicate
+   ├──► 1. Extractor: CDN URLs, metadata & formats
+   ├──► 2. Stream Proxy: Bypasses CORS & 403 blocks
+   ├──► 3. Image Enhancer: Lanczos3 + Unsharp (CPU)
+   └──► 4. AI Worker: Real-ESRGAN via Replicate (Optional)
 ```
 
 ---
@@ -42,22 +66,22 @@
 
 ```
 SnapAI/
-├── SnapAI.exe             # Native Windows GUI launcher (Auto-starts servers & opens browser)
-├── run.bat                # One-click batch launcher script
-├── stop.bat               # One-click server stop script
-├── launcher.cs            # C# source code for SnapAI.exe
+├── SnapAI.exe             # Windows GUI launcher (auto-starts servers & opens browser)
+├── run.bat                # One-click batch launcher
+├── stop.bat               # One-click server stop
+├── launcher.cs            # C# source for SnapAI.exe
 ├── backend/
-│   ├── server.js          # API Gateway: Extract + Stream Proxy + Super-Resolution
+│   ├── server.js          # API: Extract + Stream Proxy + Super-Resolution
 │   ├── .env.example       # Environment template
-│   └── package.json       # Backend dependencies (Express, Sharp, Axios, Cors)
+│   └── package.json
 ├── frontend/
 │   ├── src/
-│   │   ├── App.jsx        # Main UI application with responsive download controls
-│   │   ├── main.jsx       # React application entry point
-│   │   └── index.css      # Tailwind CSS v4 & custom keyframe animations
-│   ├── index.html         # Web entry point & metadata
-│   ├── vite.config.js     # Vite configuration with Tailwind plugin
-│   └── package.json       # Frontend dependencies (React, Lucide icons, Axios)
+│   │   ├── App.jsx        # Main UI (responsive, component-based)
+│   │   ├── main.jsx       # React entry point
+│   │   └── index.css      # Tailwind v4 + responsive utilities + animations
+│   ├── index.html         # viewport-fit, theme-color, apple-mobile-web-app
+│   ├── vite.config.js
+│   └── package.json
 ├── .gitignore
 ├── LICENSE
 └── README.md
@@ -68,27 +92,26 @@ SnapAI/
 ## ⚡ Quick Start (Windows)
 
 Double-click either:
-- **`SnapAI.exe`**: Native control panel app. Automatically starts both backend & frontend, tracks service status, and pops up your browser!
-- **`run.bat`**: Console one-click launcher that boots up both servers and opens [http://localhost:5173](http://localhost:5173).
-- **`stop.bat`**: Safely terminates all running background servers on ports 5000 & 5173.
+- **`SnapAI.exe`** — Native control panel. Auto-starts backend & frontend, shows live status, opens browser.
+- **`run.bat`** — Console launcher. Starts both servers + opens http://localhost:5173.
+- **`stop.bat`** — Terminates all running servers on ports 5000 & 5173.
 
 ---
 
-## 🚀 Manual Getting Started
+## 🚀 Manual Setup
 
 ### Prerequisites
 
-- [Node.js](https://nodejs.org/) (version 18 or newer)
-- npm or yarn
+- [Node.js](https://nodejs.org/) v18+
 
-### 1. Clone the repository
+### 1. Clone
 
 ```bash
 git clone https://github.com/Tunaanhgamedev/SnapAI.git
 cd SnapAI
 ```
 
-### 2. Run Backend Service
+### 2. Backend (port 5000)
 
 ```bash
 cd backend
@@ -96,11 +119,7 @@ npm install
 node server.js
 ```
 
-Backend will start at: `http://localhost:5000`
-
-### 3. Run Frontend Development Server
-
-Open another terminal:
+### 3. Frontend (port 5173)
 
 ```bash
 cd frontend
@@ -108,7 +127,7 @@ npm install
 npm run dev
 ```
 
-Frontend will start at: `http://localhost:5173`
+Open http://localhost:5173
 
 ---
 
@@ -116,21 +135,36 @@ Frontend will start at: `http://localhost:5173`
 
 | Method | Endpoint | Description |
 |:-------|:---------|:------------|
-| `POST` | `/api/extract` | Extracts video/slideshow media metadata, formats, covers, and audio tracks. |
-| `GET` | `/api/download` | Stream proxy downloading files with proper `Content-Disposition` attachment headers. |
-| `GET` | `/api/upscale-image` | Local CPU 2x/4x image super-resolution via Lanczos3 + unsharp filtering. |
-| `POST` | `/api/upscale-ai` | Cloud GPU AI super-resolution using Real-ESRGAN (Requires Replicate API token). |
-| `GET` | `/api/health` | Service health status, uptime, and active feature flags. |
+| `POST` | `/api/extract` | Extract video/slideshow metadata, formats, covers, and audio |
+| `GET` | `/api/download` | Stream proxy with `Content-Disposition` attachment headers |
+| `GET` | `/api/upscale-image` | CPU 2x/4x super-resolution (Lanczos3 + unsharp) |
+| `POST` | `/api/upscale-ai` | Cloud GPU AI super-resolution (Real-ESRGAN, requires token) |
+| `GET` | `/api/health` | Service status, uptime, and feature flags |
+
+---
+
+## 🛠️ Tech Stack
+
+| Layer | Technology |
+|:------|:-----------|
+| Frontend | React 18 + Vite 6 + Tailwind CSS v4 |
+| Icons | Lucide React |
+| Backend | Node.js + Express |
+| Image Processing | Sharp (Lanczos3 + Unsharp Masking + MozJPEG) |
+| HTTP / Proxy | Axios (stream piping) |
+| AI Upscale | Replicate API (Real-ESRGAN + GFPGAN) — optional |
+| Desktop Launcher | C# (.NET Framework) native Windows executable |
 
 ---
 
 ## 🗺️ Roadmap
 
-- [x] Phase 1: TikTok / Douyin Link Extractor + Stream Proxy + Modern Web UI
-- [x] Phase 2: Instant CPU-based 2x/4x Super-Resolution Image Enhancement
-- [ ] Phase 3: Cloud GPU AI Super-Resolution (Real-ESRGAN / GFPGAN)
-- [ ] Phase 4: Video Super-Resolution via BullMQ + Redis + FFmpeg queue
-- [ ] Phase 5: Multi-platform integration (YouTube, Facebook, Instagram via `yt-dlp`)
+- [x] Phase 1: TikTok / Douyin Link Extractor + Stream Proxy + Web UI
+- [x] Phase 2: CPU-based 2x/4x Super-Resolution Image Enhancement
+- [x] Phase 3: Fully responsive design (mobile / tablet / desktop / narrow window)
+- [ ] Phase 4: Cloud GPU AI Super-Resolution (Real-ESRGAN / GFPGAN)
+- [ ] Phase 5: Video Enhancement queue (BullMQ + Redis + FFmpeg)
+- [ ] Phase 6: Multi-platform support (YouTube, Facebook, Instagram via `yt-dlp`)
 
 ---
 
