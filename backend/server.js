@@ -1,6 +1,7 @@
 // ============================================================================
-// SnapBunny.ai — Backend Server (Optimized)
+// SnapBunny.ai — Backend Server (Multi-Platform China & Global)
 // Link extraction • Stream proxy • Image super-resolution (AI-ready)
+// Supported: Douyin, TikTok, Xiaohongshu (RED), Bilibili, Kuaishou, Weibo
 // ============================================================================
 require('dotenv').config();
 
@@ -8,23 +9,39 @@ const express = require('express');
 const axios   = require('axios');
 const cors    = require('cors');
 const sharp   = require('sharp');
+const { extractMedia } = require('./extractors');
 
 const app  = express();
 const PORT = process.env.PORT || 5000;
 
 // ── Constants ────────────────────────────────────────────────────────────────
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36';
-const TIKWM = 'https://www.tikwm.com';
 const MAX_UPSCALE_DIM = 8192;
 
-// ── Helpers ──────────────────────────────────────────────────────────────────
-const norm = (p) => (!p ? null : p.startsWith('http') ? p : `${TIKWM}${p}`);
-const fmtSize = (b) => {
-  if (!b) return null;
-  const mb = b / 1048576;
-  return mb >= 1 ? `${mb.toFixed(1)} MB` : `${(b / 1024).toFixed(0)} KB`;
-};
 const safeName = (s, max = 120) => s.replace(/[^a-zA-Z0-9_\-]/g, '_').substring(0, max);
+
+/**
+ * Determine the optimal HTTP Referer header based on the target CDN URL
+ */
+function getUpstreamReferer(fileUrl) {
+  const lower = fileUrl.toLowerCase();
+  if (lower.includes('bilibili') || lower.includes('hdslb') || lower.includes('bilivideo') || lower.includes('akamaized.net')) {
+    return 'https://www.bilibili.com/';
+  }
+  if (lower.includes('xiaohongshu') || lower.includes('xhscdn') || lower.includes('xhslink')) {
+    return 'https://www.xiaohongshu.com/';
+  }
+  if (lower.includes('kuaishou') || lower.includes('yximgs') || lower.includes('kwaicdn') || lower.includes('chenzhongtech')) {
+    return 'https://www.kuaishou.com/';
+  }
+  if (lower.includes('weibo') || lower.includes('sinaimg') || lower.includes('weibocdn')) {
+    return 'https://weibo.com/';
+  }
+  if (lower.includes('douyin') || lower.includes('snssdk') || lower.includes('amemv') || lower.includes('byteimg')) {
+    return 'https://www.douyin.com/';
+  }
+  return 'https://www.tiktok.com/';
+}
 
 // ── Middleware ────────────────────────────────────────────────────────────────
 app.use(cors());
@@ -39,70 +56,26 @@ app.use((_, res, next) => {
 });
 
 // ============================================================================
-// 1. EXTRACT — TikTok / Douyin link parsing
+// 1. EXTRACT — Multi-Platform Link Parsing
 //    POST /api/extract  { url: string }
 // ============================================================================
 app.post('/api/extract', async (req, res) => {
   const { url } = req.body;
   if (!url || typeof url !== 'string' || !url.trim()) {
-    return res.status(400).json({ success: false, error: 'Please provide a valid TikTok or Douyin URL.' });
+    return res.status(400).json({
+      success: false,
+      error: 'Vui lòng nhập đường dẫn hợp lệ (hỗ trợ Douyin, TikTok, Bilibili, Xiaohongshu, Kuaishou, Weibo).'
+    });
   }
 
   try {
-    const { data: resp } = await axios.post(
-      `${TIKWM}/api/`,
-      new URLSearchParams({ url: url.trim(), count: 12, cursor: 0, web: 1, hd: 1 }),
-      {
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8', 'User-Agent': UA },
-        timeout: 15000
-      }
-    );
-
-    if (resp.code !== 0 || !resp.data) {
-      return res.status(404).json({ success: false, error: 'Content not found or is set to private.' });
-    }
-
-    const d = resp.data;
-    const isSlide = Array.isArray(d.images) && d.images.length > 0;
-
-    return res.json({
-      success: true,
-      id: d.id,
-      title: d.title || 'Untitled',
-      cover: norm(d.cover) || norm(d.origin_cover),
-      duration: d.duration || 0,
-      createTime: d.create_time,
-      author: {
-        nickname: d.author?.nickname || 'Unknown',
-        uniqueId: d.author?.unique_id || '',
-        avatar: norm(d.author?.avatar)
-      },
-      stats: {
-        plays: d.play_count,
-        likes: d.digg_count,
-        comments: d.comment_count,
-        shares: d.share_count
-      },
-      type: isSlide ? 'slideshow' : 'video',
-      downloads: {
-        noWatermarkSD: norm(d.play),
-        noWatermarkHD: norm(d.hdplay || d.play),
-        watermark: norm(d.wmplay),
-        music: norm(d.music),
-        musicTitle: d.music_info?.title || null
-      },
-      sizeInfo: {
-        sdSize: fmtSize(d.size) || 'SD',
-        hdSize: fmtSize(d.hd_size) || 'HD',
-        wmSize: fmtSize(d.wm_size) || 'Original'
-      },
-      images: isSlide ? d.images.map(norm) : []
-    });
+    const result = await extractMedia(url.trim());
+    return res.json(result);
   } catch (err) {
-    console.error('[Extract]', err.message);
+    console.error('[Extract Error]', err.message);
     return res.status(err.response?.status || 500).json({
       success: false,
-      error: 'Failed to connect to analysis engine. Please try again later.'
+      error: err.message || 'Không thể phân tích liên kết. Vui lòng thử lại sau.'
     });
   }
 });
@@ -113,17 +86,21 @@ app.post('/api/extract', async (req, res) => {
 // ============================================================================
 app.get('/api/download', async (req, res) => {
   const { fileUrl, filename = 'snap_media', ext = 'mp4' } = req.query;
-  if (!fileUrl) return res.status(400).json({ error: 'Missing fileUrl parameter.' });
+  if (!fileUrl) return res.status(400).json({ error: 'Thiếu tham số fileUrl.' });
 
   try {
-    const referer = fileUrl.includes('douyin') ? 'https://www.douyin.com/' : 'https://www.tiktok.com/';
+    const referer = getUpstreamReferer(fileUrl);
 
     const upstream = await axios({
       method: 'GET',
       url: fileUrl,
       responseType: 'stream',
       timeout: 60000,
-      headers: { 'User-Agent': UA, 'Referer': referer, 'Accept': '*/*' }
+      headers: {
+        'User-Agent': UA,
+        'Referer': referer,
+        'Accept': '*/*'
+      }
     });
 
     res.setHeader('Content-Disposition', `attachment; filename="${safeName(filename)}.${ext}"`);
@@ -135,9 +112,9 @@ app.get('/api/download', async (req, res) => {
     upstream.data.pipe(res);
     req.on('close', () => upstream.data.destroy());
   } catch (err) {
-    console.error('[Download]', err.message);
+    console.error('[Download Error]', err.message);
     if (!res.headersSent) {
-      res.status(502).json({ error: 'Unable to fetch file from upstream CDN.' });
+      res.status(502).json({ error: 'Không thể tải file từ CDN nguồn. Vui lòng thử lại.' });
     }
   }
 });
@@ -148,13 +125,17 @@ app.get('/api/download', async (req, res) => {
 // ============================================================================
 app.get('/api/upscale-image', async (req, res) => {
   const { imageUrl, scale = '2', filename = 'snap_upscaled' } = req.query;
-  if (!imageUrl) return res.status(400).json({ error: 'Missing imageUrl parameter.' });
+  if (!imageUrl) return res.status(400).json({ error: 'Thiếu tham số imageUrl.' });
 
   try {
+    const referer = getUpstreamReferer(imageUrl);
     const { data } = await axios.get(imageUrl, {
       responseType: 'arraybuffer',
       timeout: 20000,
-      headers: { 'User-Agent': UA }
+      headers: {
+        'User-Agent': UA,
+        'Referer': referer
+      }
     });
 
     const buf  = Buffer.from(data);
@@ -178,9 +159,9 @@ app.get('/api/upscale-image', async (req, res) => {
     res.setHeader('X-Upscaled-Size', `${tw}x${Math.round(h * (tw / w))}`);
     return res.send(out);
   } catch (err) {
-    console.error('[Upscale]', err.message);
+    console.error('[Upscale Error]', err.message);
     if (!res.headersSent) {
-      return res.status(500).json({ error: 'Image upscale failed. File may be too large or invalid.' });
+      return res.status(500).json({ error: 'Nâng cấp ảnh thất bại. Định dạng file có thể không hợp lệ.' });
     }
   }
 });
@@ -192,11 +173,11 @@ app.get('/api/upscale-image', async (req, res) => {
 app.post('/api/upscale-ai', async (req, res) => {
   const token = process.env.REPLICATE_API_TOKEN;
   if (!token) {
-    return res.status(501).json({ error: 'AI Upscale not activated. Add REPLICATE_API_TOKEN to .env' });
+    return res.status(501).json({ error: 'AI Upscale chưa được kích hoạt. Hãy thêm REPLICATE_API_TOKEN vào .env' });
   }
 
   const { imageUrl, scale = 2, faceEnhance = true } = req.body;
-  if (!imageUrl) return res.status(400).json({ error: 'Missing imageUrl parameter.' });
+  if (!imageUrl) return res.status(400).json({ error: 'Thiếu tham số imageUrl.' });
 
   try {
     const { data: pred } = await axios.post(
@@ -221,10 +202,10 @@ app.post('/api/upscale-ai', async (req, res) => {
     if (result.status === 'succeeded') {
       return res.json({ success: true, upscaledUrl: result.output, metrics: result.metrics });
     }
-    return res.status(500).json({ error: 'AI Upscale timed out or failed.', status: result.status });
+    return res.status(500).json({ error: 'Quá trình AI Upscale thất bại hoặc hết thời gian chờ.', status: result.status });
   } catch (err) {
-    console.error('[AI Upscale]', err.message);
-    return res.status(500).json({ error: 'AI Upscale service error.' });
+    console.error('[AI Upscale Error]', err.message);
+    return res.status(500).json({ error: 'Lỗi khi gọi dịch vụ AI Upscale.' });
   }
 });
 
@@ -235,7 +216,15 @@ app.get('/api/health', (_, res) => {
   res.json({
     status: 'ok',
     service: 'SnapBunny.ai',
-    version: '1.1.0',
+    version: '1.2.0',
+    platforms: [
+      'TikTok',
+      'Douyin (抖音)',
+      'Xiaohongshu (小红书 - RED)',
+      'Bilibili (哔哩哔哩 / B站)',
+      'Kuaishou (快手)',
+      'Weibo (微博)'
+    ],
     features: {
       extract: true,
       streamProxy: true,
@@ -251,6 +240,8 @@ app.listen(PORT, () => {
   console.log('');
   console.log('  ╔══════════════════════════════════════════════════════╗');
   console.log(`  ║  🚀 SnapBunny.ai Backend — port ${PORT}                ║`);
+  console.log('  ║  Đa nền tảng: Douyin, Xiaohongshu, Bilibili,        ║');
+  console.log('  ║               Kuaishou, Weibo & TikTok               ║');
   console.log('  ║                                                      ║');
   console.log(`  ║  Health:    http://localhost:${PORT}/api/health          ║`);
   console.log('  ║  Extract:   POST /api/extract                        ║');
