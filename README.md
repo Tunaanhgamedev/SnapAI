@@ -1,6 +1,6 @@
 # ⚡ SnapAI (SnapBunny.ai)
 
-> High-performance, watermark-free media downloader and AI enhancer platform for TikTok & Douyin with 2x/4x Super-Resolution image upscaling. Fully responsive — works on phones, tablets, desktops, and every window size in between.
+> High-performance, watermark-free media downloader and AI enhancer platform for Chinese & Global social networks — **Douyin (抖音)**, **Xiaohongshu (小红书 - RED)**, **Bilibili (哔哩哔哩 / B站)**, **Kuaishou (快手)**, **Weibo (微博)**, and **TikTok**. Features 2x/4x Super-Resolution image upscaling and full responsiveness on mobile, tablet, and desktop.
 
 [![Node.js](https://img.shields.io/badge/Node.js-18+-339933?logo=node.js&logoColor=white)](https://nodejs.org/)
 [![React](https://img.shields.io/badge/React-18.3-61DAFB?logo=react&logoColor=black)](https://react.dev/)
@@ -13,12 +13,19 @@
 
 ## 🌟 Key Features
 
-- 🎬 **Multi-Platform Link Extractor** — Parses TikTok, Douyin, and short URLs (`vt.tiktok.com`, `v.douyin.com`) for videos and slideshows.
+- 🇨🇳 **Dedicated Chinese Social Media Extractors**:
+  - **Douyin (抖音)** — Watermark-free HD video (`play_addr`), image notes/slideshows (图集), and original MP3 audio.
+  - **Xiaohongshu (小红书 - RED)** — Pristine uncompressed HD photos (2K/4K) stripped of watermark crop filters, plus unwatermarked video notes.
+  - **Bilibili (哔哩哔哩 / B站)** — High-resolution video streams (`BV...` & `b23.tv`), cover art, duration, and owner metadata.
+  - **Kuaishou (快手 / Kwai)** — Clean video downloads and photo atlas (`atlas`) albums.
+  - **Weibo (微博)** — Full 1080p video clips and large photo collections (`pics`).
+  - **TikTok** — International TikTok short links (`vt.tiktok.com`, `vm.tiktok.com`) with watermark/no-watermark selections.
+- 🧹 **Automatic Share Text Sanitizer** — Automatically isolates valid URLs from noisy app share texts (e.g., `0.12 复制打开抖音... https://v.douyin.com/...`).
 - 🚫 **No-Watermark Video Streams** — Direct access to pristine original resolution without watermarks or user tags.
-- 📐 **Quality Resolution Selection** — Choose between Standard Definition (SD) and Full High Definition (HD).
-- 🖼️ **Super-Resolution Image Enhancer** — Fast local 2x / 4x upscaling via **Sharp** (Lanczos3 + Unsharp Masking) on CPU.
+- 📐 **Quality Resolution Selection** — Standard Definition (SD) vs. Full High Definition (HD).
+- 🖼️ **Super-Resolution Image Enhancer** — Fast local 2x / 4x upscaling via **Sharp** (Lanczos3 + Unsharp Masking) running on CPU.
 - 🎵 **Audio Extraction** — Download background music tracks directly as MP3 files.
-- 🔒 **Stream Proxy** — Pipes media from upstream CDNs to the browser, bypassing CORS and 403 referrer checks.
+- 🔒 **Adaptive Stream Proxy** — Pipes media from upstream CDNs to the browser with dynamic Referer headers, bypassing CORS and 403 Forbidden checks.
 - 🤖 **AI Upscaling Ready** — Pre-wired for Real-ESRGAN / GFPGAN via Replicate API.
 - 📱 **Fully Responsive** — Adaptive layout for phones (320px+), tablets, laptops, desktops, and resized browser windows.
 
@@ -36,14 +43,6 @@ The UI adapts seamlessly across all screen sizes and orientations:
 | 💻 Laptop / Desktop | 1024px+ | Full 4-column grid, all metadata visible |
 | 🪟 Narrow window | Any width | Reflows just like the matching mobile breakpoint |
 
-**Additional mobile optimizations:**
-- Safe area insets for iPhone notch / Dynamic Island / Android gesture bar
-- iOS zoom prevention on input focus (16px minimum font)
-- Touch targets meet WCAG 2.2 minimum (44×44px)
-- Overscroll behavior disabled to prevent accidental pull-to-refresh
-- `viewport-fit=cover` for edge-to-edge rendering
-- Mobile hamburger menu for header navigation
-
 ---
 
 ## 🏗️ System Architecture
@@ -54,10 +53,16 @@ The UI adapts seamlessly across all screen sizes and orientations:
                    │ HTTP Requests
                    ▼
 [ Backend Gateway (Node.js + Express) ]
-   ├──► 1. Extractor: CDN URLs, metadata & formats
-   ├──► 2. Stream Proxy: Bypasses CORS & 403 blocks
-   ├──► 3. Image Enhancer: Lanczos3 + Unsharp (CPU)
-   └──► 4. AI Worker: Real-ESRGAN via Replicate (Optional)
+   ├──► Extractor Router (Auto-detects platform)
+   │       ├── Douyin Extractor (TikWM + Direct iteminfo fallback)
+   │       ├── Xiaohongshu Extractor (Unwatermarked HD photos & video)
+   │       ├── Bilibili Extractor (Mobile SSR playUrl & metadata)
+   │       ├── Kuaishou Extractor (Watermark-free video & atlas)
+   │       ├── Weibo Extractor (HD stream & large pics)
+   │       └── TikTok Extractor
+   ├──► Stream Proxy: Dynamic CDN Referer (bypasses 403 blocks)
+   ├──► Image Enhancer: Lanczos3 + Unsharp Masking (CPU)
+   └──► AI Worker: Real-ESRGAN via Replicate (Optional Cloud GPU)
 ```
 
 ---
@@ -71,15 +76,22 @@ SnapAI/
 ├── stop.bat               # One-click server stop
 ├── launcher.cs            # C# source for SnapAI.exe
 ├── backend/
-│   ├── server.js          # API: Extract + Stream Proxy + Super-Resolution
+│   ├── extractors/        # Modular multi-platform extractors
+│   │   ├── bilibili.js    # Bilibili (B站) video & metadata
+│   │   ├── douyin.js      # Douyin (抖音) video, slideshow & music
+│   │   ├── kuaishou.js    # Kuaishou (快手) video & atlas
+│   │   ├── weibo.js       # Weibo (微博) video & photos
+│   │   ├── xiaohongshu.js # Xiaohongshu (小红书) unwatermarked photos & video
+│   │   └── index.js       # Auto-detector & dispatcher
+│   ├── server.js          # API: Extract + Adaptive Stream Proxy + Super-Resolution
 │   ├── .env.example       # Environment template
 │   └── package.json
 ├── frontend/
 │   ├── src/
-│   │   ├── App.jsx        # Main UI (responsive, component-based)
+│   │   ├── App.jsx        # Responsive UI with multi-platform tags & controls
 │   │   ├── main.jsx       # React entry point
 │   │   └── index.css      # Tailwind v4 + responsive utilities + animations
-│   ├── index.html         # viewport-fit, theme-color, apple-mobile-web-app
+│   ├── index.html         # viewport-fit, theme-color, mobile meta
 │   ├── vite.config.js
 │   └── package.json
 ├── .gitignore
@@ -135,36 +147,24 @@ Open http://localhost:5173
 
 | Method | Endpoint | Description |
 |:-------|:---------|:------------|
-| `POST` | `/api/extract` | Extract video/slideshow metadata, formats, covers, and audio |
-| `GET` | `/api/download` | Stream proxy with `Content-Disposition` attachment headers |
-| `GET` | `/api/upscale-image` | CPU 2x/4x super-resolution (Lanczos3 + unsharp) |
+| `POST` | `/api/extract` | Extract media from Douyin, Xiaohongshu, Bilibili, Kuaishou, Weibo, or TikTok |
+| `GET` | `/api/download` | Adaptive stream proxy with tailored CDN Referer headers |
+| `GET` | `/api/upscale-image` | CPU 2x/4x super-resolution (Lanczos3 + unsharp filtering) |
 | `POST` | `/api/upscale-ai` | Cloud GPU AI super-resolution (Real-ESRGAN, requires token) |
-| `GET` | `/api/health` | Service status, uptime, and feature flags |
+| `GET` | `/api/health` | Service status, uptime, and supported platforms list |
 
 ---
 
-## 🛠️ Tech Stack
+## 🛠️ Supported Platforms
 
-| Layer | Technology |
-|:------|:-----------|
-| Frontend | React 18 + Vite 6 + Tailwind CSS v4 |
-| Icons | Lucide React |
-| Backend | Node.js + Express |
-| Image Processing | Sharp (Lanczos3 + Unsharp Masking + MozJPEG) |
-| HTTP / Proxy | Axios (stream piping) |
-| AI Upscale | Replicate API (Real-ESRGAN + GFPGAN) — optional |
-| Desktop Launcher | C# (.NET Framework) native Windows executable |
-
----
-
-## 🗺️ Roadmap
-
-- [x] Phase 1: TikTok / Douyin Link Extractor + Stream Proxy + Web UI
-- [x] Phase 2: CPU-based 2x/4x Super-Resolution Image Enhancement
-- [x] Phase 3: Fully responsive design (mobile / tablet / desktop / narrow window)
-- [ ] Phase 4: Cloud GPU AI Super-Resolution (Real-ESRGAN / GFPGAN)
-- [ ] Phase 5: Video Enhancement queue (BullMQ + Redis + FFmpeg)
-- [ ] Phase 6: Multi-platform support (YouTube, Facebook, Instagram via `yt-dlp`)
+| Platform | Short Links | Videos | Slideshows / Photos | Audio MP3 | Watermark Stripped |
+|:---------|:------------|:------:|:-------------------:|:---------:|:------------------:|
+| **抖音 Douyin** | `v.douyin.com` | ✅ | ✅ | ✅ | ✅ |
+| **小红书 Xiaohongshu** | `xhslink.com` | ✅ | ✅ (HD 2K/4K) | ❌ | ✅ |
+| **哔哩哔哩 Bilibili** | `b23.tv` | ✅ | ❌ | ✅ | ✅ |
+| **快手 Kuaishou** | `v.kuaishou.com` | ✅ | ✅ | ✅ | ✅ |
+| **微博 Weibo** | `weibo.cn` | ✅ | ✅ | ❌ | ✅ |
+| **TikTok** | `vt.tiktok.com` | ✅ | ✅ | ✅ | ✅ |
 
 ---
 
