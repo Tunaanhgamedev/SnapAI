@@ -4,7 +4,7 @@ import {
   Download, Sparkles, Music, Video, Image as ImageIcon,
   Clipboard, Trash2, Loader2, CheckCircle2, ShieldCheck,
   Zap, Layers, AlertCircle, Clock, Eye, Heart,
-  MessageCircle, Share2, ChevronDown, Menu, X
+  MessageCircle, Share2, Menu, X, Globe2
 } from 'lucide-react';
 
 const API = 'http://localhost:5000';
@@ -20,6 +20,16 @@ const fmtCount = (n) => {
 const fmtDuration = (s) => {
   if (!s) return null;
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+};
+
+const PLATFORM_CONFIG = {
+  douyin:      { name: 'Douyin (抖音)',      color: 'bg-rose-500/15 text-rose-300 border-rose-500/30' },
+  tiktok:      { name: 'TikTok',             color: 'bg-cyan-500/15 text-cyan-300 border-cyan-500/30' },
+  xiaohongshu: { name: 'Tiểu Hồng Thư (小红书)', color: 'bg-red-500/15 text-red-300 border-red-500/30' },
+  bilibili:    { name: 'Bilibili (哔哩哔哩)', color: 'bg-sky-500/15 text-sky-300 border-sky-500/30' },
+  kuaishou:    { name: 'Kuaishou (快手)',    color: 'bg-amber-500/15 text-amber-300 border-amber-500/30' },
+  weibo:       { name: 'Weibo (微博)',       color: 'bg-orange-500/15 text-orange-300 border-orange-500/30' },
+  generic:     { name: 'Media Downloader',   color: 'bg-indigo-500/15 text-indigo-300 border-indigo-500/30' }
 };
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -99,10 +109,10 @@ function ImageCard({ imgUrl, idx, proxyUrl, upscaleUrl, factor }) {
 // MAIN APP
 // ══════════════════════════════════════════════════════════════════════════════
 export default function App() {
-  const [url, setUrl]                 = useState('');
-  const [loading, setLoading]         = useState(false);
-  const [error, setError]             = useState('');
-  const [mediaData, setMediaData]     = useState(null);
+  const [url, setUrl]                     = useState('');
+  const [loading, setLoading]             = useState(false);
+  const [error, setError]                 = useState('');
+  const [mediaData, setMediaData]         = useState(null);
   const [upscaleFactor, setUpscaleFactor] = useState('2');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
@@ -125,7 +135,7 @@ export default function App() {
     e.preventDefault();
     const trimmed = url.trim();
     if (!trimmed) {
-      setError('Vui lòng dán đường dẫn TikTok hoặc Douyin vào ô phía trên!');
+      setError('Vui lòng dán liên kết (Douyin, TikTok, Tiểu Hồng Thư, Bilibili, Kuaishou, Weibo) vào ô trống!');
       return;
     }
     setLoading(true); setError(''); setMediaData(null);
@@ -153,24 +163,26 @@ export default function App() {
   // ── Feature cards data ─────────────────────────────────────────────────────
   const features = useMemo(() => [
     {
-      icon: <CheckCircle2 className="w-5 sm:w-6 h-5 sm:h-6 text-indigo-400" />,
-      title: 'Tùy chọn Watermark',
-      desc: 'Lấy luồng phát gốc sạch 100% hoặc giữ lại logo nguyên bản tùy nhu cầu.',
-      grad: 'from-indigo-500/10'
+      icon: <Globe2 className="w-5 sm:w-6 h-5 sm:h-6 text-cyan-400" />,
+      title: 'Hỗ trợ Toàn diện MXH Trung Quốc',
+      desc: 'Tải sạch logo từ Douyin (抖音), Tiểu Hồng Thư (小红书), Bilibili (B站), Kuaishou (快手), Weibo (微博).',
+      grad: 'from-cyan-500/10'
     },
     {
       icon: <Sparkles className="w-5 sm:w-6 h-5 sm:h-6 text-purple-400" />,
-      title: 'Nâng cấp 2K / 4K',
-      desc: 'Bộ lọc Lanczos3 kết hợp Unsharp Masking tăng độ chi tiết cho ảnh bị nén mờ.',
+      title: 'Nâng cấp 2K / 4K Super-Resolution',
+      desc: 'Bộ lọc nội suy Lanczos3 kết hợp Unsharp Masking tăng độ nét và khử mờ cho ảnh nén.',
       grad: 'from-purple-500/10'
     },
     {
       icon: <ShieldCheck className="w-5 sm:w-6 h-5 sm:h-6 text-emerald-400" />,
-      title: 'Stream Proxy',
-      desc: 'Truyền tải trực tiếp từ CDN về trình duyệt qua luồng — không lưu file tạm.',
+      title: 'Stream Proxy Vượt Chặn 403',
+      desc: 'Truyền tải trực tiếp từ CDN nguồn về trình duyệt, tự động giả lập Referer vượt tường lửa.',
       grad: 'from-emerald-500/10'
     }
   ], []);
+
+  const platformInfo = mediaData ? (PLATFORM_CONFIG[mediaData.platform] || PLATFORM_CONFIG.generic) : null;
 
   // ══════════════════════════════════════════════════════════════════════════════
   // RENDER
@@ -194,9 +206,13 @@ export default function App() {
           </div>
 
           {/* Desktop badges */}
-          <div className="hidden md:flex items-center gap-2 text-xs font-medium text-slate-400">
+          <div className="hidden lg:flex items-center gap-1.5 text-xs font-medium text-slate-400">
             <span className="px-2.5 py-1 rounded-full bg-slate-800/80 border border-slate-700/60">TikTok</span>
-            <span className="px-2.5 py-1 rounded-full bg-slate-800/80 border border-slate-700/60">Douyin</span>
+            <span className="px-2.5 py-1 rounded-full bg-slate-800/80 border border-slate-700/60 text-rose-300">Douyin</span>
+            <span className="px-2.5 py-1 rounded-full bg-slate-800/80 border border-slate-700/60 text-red-300">Tiểu Hồng Thư</span>
+            <span className="px-2.5 py-1 rounded-full bg-slate-800/80 border border-slate-700/60 text-sky-300">Bilibili</span>
+            <span className="px-2.5 py-1 rounded-full bg-slate-800/80 border border-slate-700/60 text-amber-300">Kuaishou</span>
+            <span className="px-2.5 py-1 rounded-full bg-slate-800/80 border border-slate-700/60 text-orange-300">Weibo</span>
             <span className="px-2.5 py-1 rounded-full bg-gradient-to-r from-indigo-900/40 to-purple-900/40 border border-indigo-700/30 text-indigo-300">
               ✦ HD Enhancer
             </span>
@@ -204,7 +220,7 @@ export default function App() {
 
           {/* Mobile menu toggle */}
           <button
-            className="md:hidden p-2 rounded-lg hover:bg-slate-800 transition cursor-pointer touch-target"
+            className="lg:hidden p-2 rounded-lg hover:bg-slate-800 transition cursor-pointer touch-target"
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
             aria-label="Toggle menu"
           >
@@ -214,10 +230,14 @@ export default function App() {
 
         {/* Mobile dropdown badges */}
         {mobileMenuOpen && (
-          <div className="md:hidden border-t border-slate-800/60 px-3 py-3 flex flex-wrap gap-2 animate-slideDown safe-x">
-            <span className="px-3 py-1.5 rounded-full bg-slate-800/80 border border-slate-700/60 text-xs text-slate-400">TikTok</span>
-            <span className="px-3 py-1.5 rounded-full bg-slate-800/80 border border-slate-700/60 text-xs text-slate-400">Douyin</span>
-            <span className="px-3 py-1.5 rounded-full bg-gradient-to-r from-indigo-900/40 to-purple-900/40 border border-indigo-700/30 text-xs text-indigo-300">
+          <div className="lg:hidden border-t border-slate-800/60 px-3 py-3 flex flex-wrap gap-1.5 animate-slideDown safe-x">
+            <span className="px-2.5 py-1 rounded-full bg-slate-800/80 border border-slate-700/60 text-xs text-slate-300">TikTok</span>
+            <span className="px-2.5 py-1 rounded-full bg-slate-800/80 border border-slate-700/60 text-xs text-rose-300">Douyin</span>
+            <span className="px-2.5 py-1 rounded-full bg-slate-800/80 border border-slate-700/60 text-xs text-red-300">Tiểu Hồng Thư</span>
+            <span className="px-2.5 py-1 rounded-full bg-slate-800/80 border border-slate-700/60 text-xs text-sky-300">Bilibili</span>
+            <span className="px-2.5 py-1 rounded-full bg-slate-800/80 border border-slate-700/60 text-xs text-amber-300">Kuaishou</span>
+            <span className="px-2.5 py-1 rounded-full bg-slate-800/80 border border-slate-700/60 text-xs text-orange-300">Weibo</span>
+            <span className="px-2.5 py-1 rounded-full bg-gradient-to-r from-indigo-900/40 to-purple-900/40 border border-indigo-700/30 text-xs text-indigo-300">
               ✦ HD Enhancer
             </span>
           </div>
@@ -231,7 +251,7 @@ export default function App() {
         <div className="text-center mb-6 sm:mb-10 animate-fadeInUp">
           <div className="inline-flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-1 sm:py-1.5 rounded-full bg-indigo-500/10 border border-indigo-500/20 text-indigo-300 text-[11px] sm:text-xs font-medium mb-4 sm:mb-5">
             <Sparkles className="w-3 sm:w-3.5 h-3 sm:h-3.5" />
-            Miễn phí 100% • Không cần đăng nhập
+            Đa nền tảng Trung Quốc & Quốc Tế • Miễn phí 100%
           </div>
           <h1 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-extrabold tracking-tight mb-3 sm:mb-4 leading-tight">
             <span className="bg-gradient-to-r from-indigo-300 via-white to-purple-300 bg-clip-text text-transparent">
@@ -239,9 +259,18 @@ export default function App() {
             </span>
           </h1>
           <p className="text-slate-400 text-xs sm:text-sm lg:text-base max-w-2xl mx-auto leading-relaxed px-2">
-            Hỗ trợ TikTok & Douyin chất lượng Full HD, giữ / xóa Watermark,
-            tải MP3, Slideshow và nâng cấp ảnh lên 2K / 4K.
+            Hỗ trợ <strong>Douyin (抖音)</strong>, <strong>Tiểu Hồng Thư (小红书)</strong>, <strong>Bilibili (B站)</strong>, <strong>Kuaishou (快手)</strong>, <strong>Weibo (微博)</strong> và <strong>TikTok</strong>. Tải sạch watermark, tải ảnh cuộn gốc và nâng cấp 4K bằng AI.
           </p>
+
+          {/* Platform chips */}
+          <div className="flex flex-wrap items-center justify-center gap-2 mt-4 text-[11px] text-slate-400">
+            <span className="px-2 py-0.5 rounded-md bg-slate-900 border border-slate-800">抖音 Douyin</span>
+            <span className="px-2 py-0.5 rounded-md bg-slate-900 border border-slate-800">小红书 RED</span>
+            <span className="px-2 py-0.5 rounded-md bg-slate-900 border border-slate-800">哔哩哔哩 Bilibili</span>
+            <span className="px-2 py-0.5 rounded-md bg-slate-900 border border-slate-800">快手 Kuaishou</span>
+            <span className="px-2 py-0.5 rounded-md bg-slate-900 border border-slate-800">微博 Weibo</span>
+            <span className="px-2 py-0.5 rounded-md bg-slate-900 border border-slate-800">TikTok</span>
+          </div>
         </div>
 
         {/* ── URL Input ─────────────────────────────────────────────────────── */}
@@ -254,11 +283,10 @@ export default function App() {
             {/* Input */}
             <div className="relative flex-1 flex items-center">
               <input
-                type="url"
-                inputMode="url"
+                type="text"
                 value={url}
                 onChange={(e) => { setUrl(e.target.value); setError(''); }}
-                placeholder="Dán link TikTok / Douyin vào đây..."
+                placeholder="Dán link hoặc chữ chia sẻ từ Douyin, Xiaohongshu, Bilibili, Kuaishou, Weibo, TikTok..."
                 className="w-full bg-slate-950 text-slate-100 placeholder-slate-500 pl-3 sm:pl-4 pr-20 sm:pr-24 py-3.5 sm:py-4 rounded-xl border border-slate-800 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/30 transition text-sm"
               />
               {url ? (
@@ -331,13 +359,20 @@ export default function App() {
 
                 {/* Cover thumbnail */}
                 <div className="w-full sm:w-36 md:w-44 h-52 sm:h-56 rounded-xl overflow-hidden bg-slate-950 shrink-0 relative border border-slate-800 group mx-auto sm:mx-0 max-w-[280px] sm:max-w-none">
-                  <img
-                    src={mediaData.cover}
-                    alt="Cover"
-                    className="w-full h-full object-cover group-hover:scale-105 transition duration-500"
-                    loading="lazy"
-                    decoding="async"
-                  />
+                  {mediaData.cover ? (
+                    <img
+                      src={mediaData.cover}
+                      alt="Cover"
+                      className="w-full h-full object-cover group-hover:scale-105 transition duration-500"
+                      loading="lazy"
+                      decoding="async"
+                    />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center bg-slate-900 text-slate-500">
+                      <Video className="w-8 h-8" />
+                    </div>
+                  )}
+
                   {/* Type badge */}
                   <span className="absolute top-2 left-2 sm:top-2.5 sm:left-2.5 px-2 sm:px-2.5 py-0.5 sm:py-1 rounded-lg bg-black/70 backdrop-blur-md text-[11px] sm:text-xs font-semibold flex items-center gap-1 sm:gap-1.5">
                     {mediaData.type === 'slideshow' ? (
@@ -346,6 +381,14 @@ export default function App() {
                       <><Video className="w-3 sm:w-3.5 h-3 sm:h-3.5 text-indigo-400" /> Video</>
                     )}
                   </span>
+
+                  {/* Platform badge */}
+                  {platformInfo && (
+                    <span className={`absolute bottom-2 left-2 px-2 py-0.5 rounded-md text-[10px] font-bold border backdrop-blur-md ${platformInfo.color}`}>
+                      {platformInfo.name}
+                    </span>
+                  )}
+
                   {/* Duration */}
                   {mediaData.duration > 0 && (
                     <span className="absolute bottom-2 right-2 sm:bottom-2.5 sm:right-2.5 px-1.5 sm:px-2 py-0.5 rounded-md bg-black/70 backdrop-blur-md text-[10px] sm:text-[11px] font-mono font-semibold flex items-center gap-1">
@@ -364,7 +407,7 @@ export default function App() {
                         <img
                           src={mediaData.author.avatar}
                           alt={mediaData.author.nickname}
-                          className="w-9 h-9 sm:w-10 sm:h-10 rounded-full border-2 border-indigo-500/40"
+                          className="w-9 h-9 sm:w-10 sm:h-10 rounded-full border-2 border-indigo-500/40 object-cover"
                           loading="lazy"
                         />
                       )}
@@ -446,7 +489,7 @@ export default function App() {
                       Ảnh gốc ({mediaData.images.length} ảnh)
                     </h4>
                     <p className="text-[11px] sm:text-xs text-slate-400 mt-0.5 sm:mt-1">
-                      Tải ảnh gốc hoặc nâng cấp bằng Super-Resolution.
+                      Tải ảnh gốc sạch hoặc nâng cấp độ nét bằng Super-Resolution 2K/4K.
                     </p>
                   </div>
 
@@ -472,12 +515,7 @@ export default function App() {
                   </div>
                 </div>
 
-                {/* Responsive image grid:
-                    - Phone portrait:  2 columns
-                    - Phone landscape: 3 columns
-                    - Tablet:          3-4 columns
-                    - Desktop:         4 columns
-                */}
+                {/* Responsive image grid */}
                 <div className="grid grid-cols-2 xs:grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2.5 sm:gap-4 stagger-children">
                   {mediaData.images.map((imgUrl, idx) => (
                     <ImageCard
@@ -529,10 +567,10 @@ export default function App() {
         {/* ═══ FOOTER ═════════════════════════════════════════════════════════ */}
         <footer className="mt-10 sm:mt-14 text-center pb-4 safe-bottom">
           <p className="text-[11px] sm:text-xs text-slate-500">
-            TikTok • Douyin • vt.tiktok.com • v.douyin.com • vm.tiktok.com
+            Douyin (抖音) • Xiaohongshu (小红书) • Bilibili (哔哩哔哩) • Kuaishou (快手) • Weibo (微博) • TikTok
           </p>
           <p className="text-[10px] sm:text-xs text-slate-600 mt-1">
-            © {new Date().getFullYear()} SnapBunny.ai
+            © {new Date().getFullYear()} SnapBunny.ai — Tải đa phương tiện không logo & Làm nét AI
           </p>
         </footer>
       </main>
