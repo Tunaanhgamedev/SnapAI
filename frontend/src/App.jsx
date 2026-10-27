@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo, useRef } from 'react';
 import axios from 'axios';
 import {
   Download, Sparkles, Music, Video, Image as ImageIcon,
@@ -115,6 +115,8 @@ export default function App() {
   const [mediaData, setMediaData]         = useState(null);
   const [upscaleFactor, setUpscaleFactor] = useState('2');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const clientCacheRef = useRef(new Map());
+  const abortCtrlRef   = useRef(null);
 
   // ── Clipboard paste ────────────────────────────────────────────────────────
   const handlePaste = useCallback(async () => {
@@ -127,10 +129,11 @@ export default function App() {
   }, []);
 
   const handleClear = useCallback(() => {
+    if (abortCtrlRef.current) abortCtrlRef.current.abort();
     setUrl(''); setMediaData(null); setError('');
   }, []);
 
-  // ── Extract API ────────────────────────────────────────────────────────────
+  // ── Extract API with Client Caching & Request Deduplication ────────────────
   const handleExtract = useCallback(async (e) => {
     e.preventDefault();
     const trimmed = url.trim();
@@ -138,13 +141,39 @@ export default function App() {
       setError('Vui lòng dán liên kết (Douyin, TikTok, Tiểu Hồng Thư, Bilibili, Kuaishou, Weibo) vào ô trống!');
       return;
     }
+
+    // Check client-side memory cache (Instant 0ms display!)
+    if (clientCacheRef.current.has(trimmed)) {
+      setMediaData(clientCacheRef.current.get(trimmed));
+      setError('');
+      return;
+    }
+
+    // Cancel previous in-flight request if user submits again
+    if (abortCtrlRef.current) {
+      abortCtrlRef.current.abort();
+    }
+    const controller = new AbortController();
+    abortCtrlRef.current = controller;
+
     setLoading(true); setError(''); setMediaData(null);
     try {
-      const res = await axios.post(`${API}/api/extract`, { url: trimmed });
-      if (res.data?.success) setMediaData(res.data);
-      else setError(res.data?.error || 'Không thể phân tích đường dẫn.');
+      const res = await axios.post(`${API}/api/extract`, { url: trimmed }, {
+        signal: controller.signal
+      });
+      if (res.data?.success) {
+        setMediaData(res.data);
+        clientCacheRef.current.set(trimmed, res.data);
+      } else {
+        setError(res.data?.error || 'Không thể phân tích đường dẫn.');
+      }
     } catch (err) {
-      setError(err.response?.data?.error || 'Không thể kết nối tới máy chủ (cổng 5000).');
+      if (axios.isCancel(err) || err.name === 'CanceledError') return;
+      if (err.response?.status === 429) {
+        setError('Hệ thống đang có lượng truy cập rất cao từ địa chỉ của bạn. Vui lòng chờ 30 giây rồi thử lại!');
+      } else {
+        setError(err.response?.data?.error || 'Không thể kết nối tới máy chủ (cổng 5000). Vui lòng thử lại sau.');
+      }
     } finally {
       setLoading(false);
     }
