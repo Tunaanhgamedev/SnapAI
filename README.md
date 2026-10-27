@@ -147,11 +147,128 @@ Open http://localhost:5173
 
 | Method | Endpoint | Description |
 |:-------|:---------|:------------|
-| `POST` | `/api/extract` | Extract media from Douyin, Xiaohongshu, Bilibili, Kuaishou, Weibo, or TikTok |
-| `GET` | `/api/download` | Adaptive stream proxy with tailored CDN Referer headers |
-| `GET` | `/api/upscale-image` | CPU 2x/4x super-resolution (Lanczos3 + unsharp filtering) |
+| `POST` | `/api/extract` | Extract media (cached 10m + single-flight deduplicated) |
+| `GET` | `/api/download` | Adaptive stream proxy with tailored CDN Referer headers & socket abort cleanup |
+| `GET` | `/api/upscale-image` | CPU 2x/4x super-resolution (concurrency-limited semaphore + 30m buffer cache) |
 | `POST` | `/api/upscale-ai` | Cloud GPU AI super-resolution (Real-ESRGAN, requires token) |
-| `GET` | `/api/health` | Service status, uptime, and supported platforms list |
+| `GET` | `/api/health` | Service status, uptime, RSS/heap memory, CPU load, and cache hit ratios |
+
+---
+
+## ⚡ High-Concurrency Production Architecture
+
+SnapAI is built to withstand heavy traffic spikes when deployed publicly to the internet without crashing or lagging:
+
+```text
+[ Thousands of Concurrent Users / Mobile Apps ]
+                      │
+                      ▼
+[ Cloudflare / Edge CDN ]  --> DDoS Protection & Static Asset Caching
+                      │
+                      ▼
+[ Nginx Reverse Proxy ]     --> SSL Termination, Gzip/Brotli, Keep-Alive
+                      │
+                      ▼
+[ SnapAI Node.js Cluster (PM2 / cluster.js) ]
+  ├── Worker 1 (Core 1)
+  ├── Worker 2 (Core 2)
+  ├── Worker 3 (Core 3)
+  └── Worker 4 (Core 4)
+        │
+        ├── 🛡️ Rate Limiter (express-rate-limit: 120/min global, 60/min extract, 25/min upscale)
+        ├── 🗜️ Response Compression (Gzip / Deflate / Brotli, bypasses media streams)
+        ├── 🗄️ In-Memory Cache + Single-Flight Deduplication (avoids redundant upstream API calls)
+        ├── 🎛️ Concurrency Limiter (Semaphore caps Sharp CPU threads, preventing event-loop stalls)
+        ├── 🌐 Connection Pooling (http/https Keep-Alive agents, 200 sockets, prevents TIME_WAIT)
+        └── 🧹 Stream Lifecycle Watcher (Aborts upstream CDN pipe when client disconnects)
+```
+
+### Key Performance Highlights:
+1. **Single-Flight Request Deduplication**: When a video goes viral and 100 users request the exact same URL at once, SnapAI executes only **1 upstream extractor call** and broadcasts the result to all 100 waiting clients.
+2. **Persistent HTTP Keep-Alive Pool**: Upstream connections to Douyin, Bilibili, and TikTok CDNs reuse open TCP sockets, eliminating TCP handshake overhead and avoiding OS port exhaustion (`TIME_WAIT`).
+3. **CPU Throttling for Super-Resolution**: Image upscaling tasks are queued through an async semaphore (`ConcurrencyLimiter`), ensuring CPU load never causes API timeouts.
+4. **Client-Side Instant Cache**: The web UI maintains an in-memory client cache (`clientCacheRef`) that renders repeated lookups instantly in 0ms with zero server requests.
+
+---
+
+## 🌐 Production Deployment Guide
+
+### Option 1: Multi-Core Native Cluster (Zero Extra Dependencies)
+
+Run on all available CPU cores:
+
+```bash
+cd backend
+npm run cluster
+```
+
+### Option 2: PM2 Cluster Mode (Recommended for VPS / Dedicated Servers)
+
+Install PM2 globally and start using the pre-configured `ecosystem.config.js`:
+
+```bash
+npm install -g pm2
+pm2 start ecosystem.config.js
+pm2 save
+pm2 startup
+```
+
+Monitor live metrics:
+```bash
+pm2 monit
+pm2 logs
+```
+
+### Option 3: Production Nginx Reverse Proxy Configuration
+
+Place this configuration in `/etc/nginx/sites-available/snapai.conf`:
+
+```nginx
+# Upstream Node.js cluster
+upstream snapai_backend {
+    server 127.0.0.1:5000;
+    keepalive 64;
+}
+
+server {
+    listen 80;
+    server_name your-domain.com;
+    return 301 https://$host$request_uri;
+}
+
+server {
+    listen 443 ssl http2;
+    server_name your-domain.com;
+
+    ssl_certificate /etc/letsencrypt/live/your-domain.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/your-domain.com/privkey.pem;
+
+    # Static frontend assets (Vite build output)
+    location / {
+        root /var/www/snapai/frontend/dist;
+        index index.html;
+        try_files $uri $uri/ /index.html;
+        expires 7d;
+        add_header Cache-Control "public, no-transform";
+    }
+
+    # API and Stream Proxy pass
+    location /api/ {
+        proxy_pass http://snapai_backend;
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        # Disable buffering for smooth video/audio streaming
+        proxy_buffering off;
+        proxy_read_timeout 120s;
+        proxy_send_timeout 120s;
+    }
+}
+```
 
 ---
 
