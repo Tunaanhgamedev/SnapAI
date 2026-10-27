@@ -2,7 +2,7 @@
 // Bilibili Extractor (哔哩哔哩 / B站)
 // Extracts watermark-free video streams, HD cover, author info, and stats
 // ============================================================================
-const axios = require('axios');
+const { pooledAxios: axios } = require('../httpPool');
 
 const UA_MOBILE = 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1';
 

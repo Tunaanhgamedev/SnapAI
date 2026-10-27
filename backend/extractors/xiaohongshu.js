@@ -2,7 +2,7 @@
 // Xiaohongshu Extractor (小红书 - RED)
 // Extracts original unwatermarked photos (2K/4K) and video notes
 // ============================================================================
-const axios = require('axios');
+const { pooledAxios: axios } = require('../httpPool');
 
 const UA_PC = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36';
 
